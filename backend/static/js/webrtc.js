@@ -213,9 +213,17 @@ class WebRTCManager {
 
   async startScreenShare() {
     try {
+      // Ekran paylaşımı + sistem sesi (tab audio)
       this.localStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: "always", displaySurface: "monitor" },
-        audio: false,
+        video: {
+          cursor: "always",
+          displaySurface: "monitor",
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100,
+        },
       });
 
       // Ekran paylaşımı durduğunda
@@ -224,6 +232,7 @@ class WebRTCManager {
       };
 
       this.isScreenSharing = true;
+      this.isMuted = false; // Sistem sesi varsa mute değil
       this.send({ type: "screen_share_started" });
 
       // Mevcut viewer'lara offer gönder
