@@ -436,7 +436,7 @@ endblock %} {% block content %}
             break;
 
           case "ice_candidate":
-            await this.handleIceCandidate(data.candidate);
+            await this.handleIceCandidate(data.from, data.candidate);
             break;
 
           case "screen_share_started":
@@ -511,17 +511,36 @@ endblock %} {% block content %}
         });
       },
 
-      async handleIceCandidate(candidate) {
-        if (this.peerConnection && candidate) {
-          await this.peerConnection.addIceCandidate(
-            new RTCIceCandidate(candidate)
-          );
+      async handleIceCandidate(fromUserId, candidate) {
+        if (!candidate) return;
+
+        // Host'tan gelen ICE candidate - video peer connection için
+        if (fromUserId === this.hostId && this.peerConnection) {
+          try {
+            await this.peerConnection.addIceCandidate(
+              new RTCIceCandidate(candidate)
+            );
+          } catch (e) {
+            console.warn("Video ICE candidate error:", e);
+          }
+        }
+
+        // Audio peer connection için de kontrol et
+        if (fromUserId === this.hostId && this.audioPeerConnection) {
+          try {
+            await this.audioPeerConnection.addIceCandidate(
+              new RTCIceCandidate(candidate)
+            );
+          } catch (e) {
+            console.warn("Audio ICE candidate error:", e);
+          }
         }
       },
 
       async toggleMicrophone() {
         if (this.isMicEnabled) {
           // Mikrofonu kapat
+          console.log("Mikrofon kapatılıyor...");
           if (this.localAudioStream) {
             this.localAudioStream.getTracks().forEach((t) => t.stop());
             this.localAudioStream = null;
@@ -535,19 +554,30 @@ endblock %} {% block content %}
         } else {
           // Mikrofonu aç
           try {
+            console.log("Mikrofon açılıyor...");
             this.localAudioStream = await navigator.mediaDevices.getUserMedia({
-              audio: true,
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              },
             });
+
+            console.log(
+              "Mikrofon erişimi sağlandı, peer connection oluşturuluyor..."
+            );
 
             // Audio için ayrı peer connection
             this.audioPeerConnection = new RTCPeerConnection(this.iceConfig);
 
             this.localAudioStream.getTracks().forEach((track) => {
+              console.log("Audio track ekleniyor:", track.kind);
               this.audioPeerConnection.addTrack(track, this.localAudioStream);
             });
 
             this.audioPeerConnection.onicecandidate = (event) => {
               if (event.candidate) {
+                console.log("Audio ICE candidate gönderiliyor host'a");
                 this.send({
                   type: "ice_candidate",
                   target: this.hostId,
@@ -556,8 +586,24 @@ endblock %} {% block content %}
               }
             };
 
+            this.audioPeerConnection.onconnectionstatechange = () => {
+              console.log(
+                "Audio peer connection state:",
+                this.audioPeerConnection.connectionState
+              );
+            };
+
+            this.audioPeerConnection.oniceconnectionstatechange = () => {
+              console.log(
+                "Audio ICE connection state:",
+                this.audioPeerConnection.iceConnectionState
+              );
+            };
+
             const offer = await this.audioPeerConnection.createOffer();
             await this.audioPeerConnection.setLocalDescription(offer);
+
+            console.log("Audio offer gönderiliyor host'a...");
 
             this.send({
               type: "viewer_audio_offer",
@@ -567,16 +613,22 @@ endblock %} {% block content %}
             this.isMicEnabled = true;
           } catch (e) {
             console.error("Mikrofon erişim hatası:", e);
-            alert("Mikrofon erişimi reddedildi");
+            alert("Mikrofon erişimi reddedildi: " + e.message);
           }
         }
       },
 
       async handleAudioAnswer(sdp) {
+        console.log("Audio answer alındı host'tan");
         if (this.audioPeerConnection) {
-          await this.audioPeerConnection.setRemoteDescription(
-            new RTCSessionDescription(sdp)
-          );
+          try {
+            await this.audioPeerConnection.setRemoteDescription(
+              new RTCSessionDescription(sdp)
+            );
+            console.log("Audio remote description set edildi");
+          } catch (e) {
+            console.error("Audio answer set error:", e);
+          }
         }
       },
 

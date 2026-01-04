@@ -401,9 +401,24 @@ class WebRTCManager {
   }
 
   async handleIceCandidate(fromUserId, candidate) {
+    // Video peer connection için
     const pc = this.peerConnections.get(fromUserId);
     if (pc && candidate) {
-      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (e) {
+        console.warn("Video ICE candidate error:", e);
+      }
+    }
+
+    // Viewer audio peer connection için (host tarafı)
+    const audioPc = this.viewerAudioConnections.get(fromUserId);
+    if (audioPc && candidate) {
+      try {
+        await audioPc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (e) {
+        console.warn("Viewer audio ICE candidate error:", e);
+      }
     }
   }
 
@@ -417,10 +432,12 @@ class WebRTCManager {
 
   // Viewer audio handling (host tarafı)
   async handleViewerAudioOffer(fromUserId, username, sdp) {
+    console.log(`Viewer audio offer received from ${username} (${fromUserId})`);
+
     const pc = new RTCPeerConnection(this.config);
 
     pc.ontrack = (event) => {
-      console.log(`Viewer audio received from ${username}`);
+      console.log(`Viewer audio track received from ${username}`);
       if (this.onViewerAudio) {
         this.onViewerAudio(fromUserId, username, event.streams[0]);
       }
@@ -428,12 +445,20 @@ class WebRTCManager {
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log(`Sending ICE candidate to viewer ${username}`);
         this.send({
           type: "ice_candidate",
           target: fromUserId,
           candidate: event.candidate,
         });
       }
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log(
+        `Viewer audio connection state (${username}):`,
+        pc.connectionState
+      );
     };
 
     this.viewerAudioConnections.set(fromUserId, pc);
@@ -447,6 +472,8 @@ class WebRTCManager {
       target: fromUserId,
       sdp: pc.localDescription,
     });
+
+    console.log(`Viewer audio answer sent to ${username}`);
   }
 
   closeViewerAudioConnection(userId) {

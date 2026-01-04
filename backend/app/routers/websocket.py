@@ -202,6 +202,15 @@ async def websocket_room(
                             "from": user_id,
                             "candidate": data.get("candidate")
                         })
+                    else:
+                        # Target yoksa host'a gönder (viewer audio için)
+                        host_id = str(room.host_id)
+                        if user_id != host_id:
+                            await manager.send_to_user(room_id, host_id, {
+                                "type": "ice_candidate",
+                                "from": user_id,
+                                "candidate": data.get("candidate")
+                            })
                 
                 elif msg_type == "request_offer":
                     # Viewer, host'tan offer istiyor
