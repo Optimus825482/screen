@@ -67,7 +67,8 @@ async def login_page(request: Request):
 
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request})
+    # Register kapalı - login'e yönlendir
+    return RedirectResponse(url="/login", status_code=302)
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
