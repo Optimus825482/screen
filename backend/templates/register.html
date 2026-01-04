@@ -1,0 +1,259 @@
+{% extends "base.html" %} {% block title %}Kayıt Ol - ScreenShare Pro{% endblock
+%} {% block content %}
+<div
+  x-data="registerPage()"
+  x-cloak
+  class="relative flex min-h-screen w-full flex-col justify-center overflow-hidden py-6 sm:py-12"
+>
+  <!-- Background -->
+  <div
+    class="absolute inset-0 w-full h-full bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"
+  ></div>
+  <div
+    class="absolute left-0 right-0 top-0 -z-10 m-auto h-[310px] w-[310px] rounded-full bg-primary/20 opacity-20 blur-[100px]"
+  ></div>
+
+  <div class="relative w-full max-w-md mx-auto px-4">
+    <!-- Logo -->
+    <div class="mb-8 flex flex-col items-center justify-center gap-3">
+      <a href="/" class="flex items-center gap-3 text-white">
+        <div
+          class="flex size-10 items-center justify-center rounded-lg bg-primary/20 text-primary"
+        >
+          <svg
+            fill="none"
+            height="24"
+            viewBox="0 0 48 48"
+            width="24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              clip-rule="evenodd"
+              d="M12.0799 24L4 19.2479L9.95537 8.75216L18.04 13.4961L18.0446 4H29.9554L29.96 13.4961L38.0446 8.75216L44 19.2479L35.92 24L44 28.7521L38.0446 39.2479L29.96 34.5039L29.9554 44H18.0446L18.04 34.5039L9.95537 39.2479L4 28.7521L12.0799 24Z"
+              fill="currentColor"
+              fill-rule="evenodd"
+            ></path>
+          </svg>
+        </div>
+        <h2 class="text-xl font-bold leading-tight tracking-[-0.015em]">
+          ScreenShare Pro
+        </h2>
+      </a>
+    </div>
+
+    <!-- Register Card -->
+    <div
+      class="bg-surface-dark rounded-xl shadow-xl border border-border-dark overflow-hidden"
+    >
+      <div class="px-8 pt-8 pb-6">
+        <h1 class="text-2xl font-bold text-center mb-2 tracking-tight">
+          Hesabınızı Oluşturun
+        </h1>
+        <p class="text-text-secondary text-center text-sm mb-8">
+          Ekibiniz için güvenli ekran paylaşımına başlayın.
+        </p>
+
+        <!-- Error Message -->
+        <div
+          x-show="error"
+          x-transition
+          class="bg-red-500/10 border border-red-500/20 rounded-lg p-3 mb-4"
+        >
+          <p class="text-sm text-red-400" x-text="error"></p>
+        </div>
+
+        <form @submit.prevent="register" class="flex flex-col gap-5">
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-medium" for="fullname"
+              >Kullanıcı Adı</label
+            >
+            <div class="relative">
+              <span class="absolute left-3 top-3 text-slate-400">
+                <span class="material-symbols-outlined text-[20px]"
+                  >person</span
+                >
+              </span>
+              <input
+                x-model="username"
+                type="text"
+                id="fullname"
+                placeholder="kullanici_adi"
+                required
+                minlength="3"
+                class="flex h-11 w-full rounded-lg border border-border-dark bg-background-dark px-3 py-2 pl-10 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-surface-dark transition-all"
+              />
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-medium" for="email">İş E-postası</label>
+            <div class="relative">
+              <span class="absolute left-3 top-3 text-slate-400">
+                <span class="material-symbols-outlined text-[20px]">mail</span>
+              </span>
+              <input
+                x-model="email"
+                type="email"
+                id="email"
+                placeholder="isim@sirket.com"
+                required
+                class="flex h-11 w-full rounded-lg border border-border-dark bg-background-dark px-3 py-2 pl-10 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-surface-dark transition-all"
+              />
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-medium" for="password">Şifre</label>
+            <div class="relative">
+              <span class="absolute left-3 top-3 text-slate-400">
+                <span class="material-symbols-outlined text-[20px]">lock</span>
+              </span>
+              <input
+                x-model="password"
+                :type="showPassword ? 'text' : 'password'"
+                id="password"
+                placeholder="Min. 8 karakter"
+                required
+                minlength="8"
+                class="flex h-11 w-full rounded-lg border border-border-dark bg-background-dark px-3 py-2 pl-10 pr-10 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-surface-dark transition-all"
+              />
+              <button
+                type="button"
+                @click="showPassword = !showPassword"
+                class="absolute right-3 top-3 text-slate-400 hover:text-slate-200 cursor-pointer"
+              >
+                <span
+                  class="material-symbols-outlined text-[20px]"
+                  x-text="showPassword ? 'visibility_off' : 'visibility'"
+                ></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-medium" for="confirm-password"
+              >Şifreyi Onayla</label
+            >
+            <div class="relative">
+              <span class="absolute left-3 top-3 text-slate-400">
+                <span class="material-symbols-outlined text-[20px]"
+                  >lock_reset</span
+                >
+              </span>
+              <input
+                x-model="confirmPassword"
+                type="password"
+                id="confirm-password"
+                placeholder="Şifrenizi tekrar girin"
+                required
+                class="flex h-11 w-full rounded-lg border border-border-dark bg-background-dark px-3 py-2 pl-10 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-surface-dark transition-all"
+              />
+            </div>
+            <p
+              x-show="password && confirmPassword && password !== confirmPassword"
+              class="text-xs text-red-400"
+            >
+              Şifreler eşleşmiyor
+            </p>
+          </div>
+
+          <button
+            type="submit"
+            :disabled="loading || (password !== confirmPassword)"
+            class="mt-2 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white shadow transition-colors hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+          >
+            <span x-show="!loading">Hesap Oluştur</span>
+            <span x-show="loading" class="flex items-center gap-2">
+              <svg
+                class="animate-spin h-5 w-5"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              Oluşturuluyor...
+            </span>
+          </button>
+        </form>
+      </div>
+
+      <div
+        class="border-t border-border-dark bg-background-dark/50 px-8 py-4 text-center"
+      >
+        <p class="text-sm text-text-secondary">
+          Zaten bir hesabınız var mı?
+          <a
+            class="font-semibold text-primary hover:text-blue-400 transition-all"
+            href="/login"
+            >Giriş yapın</a
+          >
+        </p>
+      </div>
+    </div>
+
+    <p class="mt-6 text-center text-xs text-slate-500">
+      Kaydolarak,
+      <a class="hover:underline hover:text-white" href="#"
+        >Hizmet Şartlarımızı</a
+      >
+      ve
+      <a class="hover:underline hover:text-white" href="#"
+        >Gizlilik Politikamızı</a
+      >
+      kabul etmiş olursunuz.
+    </p>
+  </div>
+</div>
+
+<script>
+  function registerPage() {
+    return {
+      username: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+      showPassword: false,
+      loading: false,
+      error: "",
+
+      async register() {
+        if (this.password !== this.confirmPassword) {
+          this.error = "Şifreler eşleşmiyor";
+          return;
+        }
+
+        this.loading = true;
+        this.error = "";
+
+        try {
+          await Auth.register(this.username, this.email, this.password);
+          window.location.href = "/dashboard";
+        } catch (e) {
+          this.error = e.message;
+        } finally {
+          this.loading = false;
+        }
+      },
+
+      init() {
+        if (Auth.isAuthenticated()) {
+          window.location.href = "/dashboard";
+        }
+      },
+    };
+  }
+</script>
+{% endblock %}

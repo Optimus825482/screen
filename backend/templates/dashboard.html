@@ -1,0 +1,739 @@
+{% extends "base.html" %} {% block title %}Kontrol Paneli - ScreenShare Pro{%
+endblock %} {% block content %}
+<div
+  x-data="dashboardPage()"
+  x-init="init()"
+  x-cloak
+  class="flex min-h-screen w-full flex-row overflow-hidden"
+>
+  <!-- Sidebar -->
+  <aside
+    class="flex w-64 flex-col justify-between border-r border-slate-800 bg-[#111822] p-4 flex-shrink-0 hidden md:flex"
+  >
+    <div class="flex flex-col gap-6">
+      <div class="flex items-center gap-3 px-2">
+        <div
+          class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-blue-600 text-white shadow-lg shadow-blue-500/20"
+        >
+          <span class="material-symbols-outlined text-2xl">screen_share</span>
+        </div>
+        <div class="flex flex-col">
+          <h1 class="text-base font-bold leading-tight">ScreenShare Pro</h1>
+          <p class="text-xs font-medium text-slate-400">Corporate Edition</p>
+        </div>
+      </div>
+      <nav class="flex flex-col gap-1">
+        <a
+          @click.prevent="activeTab = 'rooms'"
+          class="group flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer transition-all"
+          :class="activeTab === 'rooms' ? 'bg-primary/10 text-primary' : 'text-slate-400 hover:bg-[#233348] hover:text-white'"
+        >
+          <span
+            class="material-symbols-outlined"
+            :class="activeTab === 'rooms' ? 'fill' : ''"
+            >dashboard</span
+          >
+          <span class="text-sm font-medium">Kontrol Paneli</span>
+        </a>
+        <template x-if="isAdmin">
+          <a
+            @click.prevent="activeTab = 'users'"
+            class="group flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer transition-all"
+            :class="activeTab === 'users' ? 'bg-orange-500/10 text-orange-400' : 'text-slate-400 hover:bg-[#233348] hover:text-white'"
+          >
+            <span class="material-symbols-outlined">admin_panel_settings</span>
+            <span class="text-sm font-medium">Kullanıcı Yönetimi</span>
+          </a>
+        </template>
+        <a
+          class="group flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-400 transition-all hover:bg-[#233348] hover:text-white cursor-pointer"
+        >
+          <span class="material-symbols-outlined">settings</span>
+          <span class="text-sm font-medium">Ayarlar</span>
+        </a>
+      </nav>
+    </div>
+    <div class="mt-auto border-t border-slate-800 pt-4 relative">
+      <div
+        @click="showUserMenu = !showUserMenu"
+        class="flex items-center gap-3 rounded-lg p-2 hover:bg-[#233348] cursor-pointer"
+      >
+        <div
+          class="h-10 w-10 rounded-full flex items-center justify-center text-white font-bold"
+          :class="isAdmin ? 'bg-orange-500' : 'bg-primary'"
+        >
+          <span x-text="user?.username?.charAt(0).toUpperCase()"></span>
+        </div>
+        <div class="flex flex-1 flex-col overflow-hidden">
+          <p
+            class="truncate text-sm font-semibold text-white"
+            x-text="user?.username"
+          ></p>
+          <p
+            class="truncate text-xs"
+            :class="isAdmin ? 'text-orange-400' : 'text-slate-400'"
+            x-text="isAdmin ? 'Admin' : 'Kullanıcı'"
+          ></p>
+        </div>
+        <span class="material-symbols-outlined text-slate-400"
+          >expand_more</span
+        >
+      </div>
+      <div
+        x-show="showUserMenu"
+        @click.away="showUserMenu = false"
+        x-transition
+        class="absolute bottom-full left-0 right-0 mb-2 bg-[#1b2431] border border-slate-800 rounded-lg shadow-xl z-50"
+      >
+        <button
+          @click="logout()"
+          class="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10"
+        >
+          <span class="material-symbols-outlined text-[18px]">logout</span>Çıkış
+          Yap
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main
+    class="flex h-screen flex-1 flex-col overflow-y-auto bg-background-dark"
+  >
+    <div class="flex flex-col gap-8 p-6 md:p-10 max-w-7xl mx-auto w-full">
+      <!-- Header -->
+      <div
+        class="flex flex-col md:flex-row md:items-center justify-between gap-4"
+      >
+        <div class="flex flex-col gap-1">
+          <h1 class="text-3xl font-black tracking-tight text-white md:text-4xl">
+            Merhaba, <span x-text="user?.username"></span>
+            <span x-show="isAdmin" class="text-orange-400 text-lg"
+              >(Admin)</span
+            >
+          </h1>
+          <p class="text-base text-slate-400">
+            Toplantılarınızı yönetin ve işbirliğine başlayın.
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="relative hidden md:flex">
+            <span
+              class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 material-symbols-outlined text-[20px]"
+              >search</span
+            >
+            <input
+              x-model="searchQuery"
+              class="h-10 w-64 rounded-lg border-none bg-[#233348] pl-10 pr-4 text-sm text-white placeholder-slate-400 focus:ring-2 focus:ring-primary"
+              placeholder="Odaları ara..."
+              type="text"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- ROOMS TAB -->
+      <template x-if="activeTab === 'rooms'">
+        <div class="flex flex-col gap-8">
+          <!-- Hero Section -->
+          <section
+            class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#111822] to-[#1a2636] p-8 md:p-12 shadow-xl border border-slate-800"
+          >
+            <div
+              class="absolute right-0 top-0 h-full w-1/2 bg-gradient-to-l from-primary/10 to-transparent opacity-50"
+            ></div>
+            <div
+              class="relative z-10 grid gap-8 lg:grid-cols-2 lg:items-center"
+            >
+              <div class="flex flex-col gap-4">
+                <div
+                  class="inline-flex w-fit items-center gap-2 rounded-full bg-green-500/10 px-3 py-1 text-xs font-medium text-green-500 ring-1 ring-inset ring-green-500/20"
+                >
+                  <span class="relative flex h-2 w-2">
+                    <span
+                      class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
+                    ></span>
+                    <span
+                      class="relative inline-flex rounded-full h-2 w-2 bg-green-500"
+                    ></span>
+                  </span>
+                  Sistem Çalışıyor
+                </div>
+                <h2
+                  class="text-3xl font-bold leading-tight text-white md:text-4xl"
+                >
+                  Anında Toplantı Başlat
+                </h2>
+                <p class="max-w-md text-slate-400">
+                  Anında güvenli bir oda oluşturun.
+                </p>
+                <div class="mt-4 flex flex-wrap gap-3">
+                  <button
+                    @click="showCreateModal = true"
+                    class="flex h-12 items-center gap-2 rounded-lg bg-primary px-6 text-sm font-bold text-white shadow-lg shadow-primary/30 hover:bg-blue-600"
+                  >
+                    <span class="material-symbols-outlined">video_call</span
+                    >Yeni Oda Oluştur
+                  </button>
+                </div>
+              </div>
+              <div class="flex items-center justify-center lg:justify-end">
+                <div
+                  class="w-full max-w-sm rounded-xl bg-[#233348]/80 p-6 shadow-2xl border border-slate-700"
+                >
+                  <label class="mb-2 block text-sm font-medium text-slate-200"
+                    >Mevcut Odaya Katıl</label
+                  >
+                  <form @submit.prevent="joinRoom" class="flex gap-2">
+                    <input
+                      x-model="joinCode"
+                      class="flex-1 rounded-lg border-slate-600 bg-[#111822] px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:border-primary focus:ring-primary"
+                      placeholder="Oda Kodunu Girin"
+                      type="text"
+                    />
+                    <button
+                      type="submit"
+                      class="flex items-center justify-center rounded-lg bg-slate-700 px-4 text-white hover:bg-slate-600"
+                    >
+                      <span class="material-symbols-outlined"
+                        >arrow_forward</span
+                      >
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Stats -->
+          <div class="grid gap-4 md:grid-cols-3">
+            <div
+              class="flex flex-col gap-2 rounded-xl bg-[#233348] p-6 border border-slate-800/60"
+            >
+              <div class="flex items-center justify-between">
+                <p class="text-sm font-medium text-[#92a9c9]">
+                  Toplam Toplantı
+                </p>
+                <span class="rounded-full bg-primary/10 p-2 text-primary"
+                  ><span class="material-symbols-outlined text-[20px]"
+                    >leaderboard</span
+                  ></span
+                >
+              </div>
+              <p
+                class="text-3xl font-bold text-white"
+                x-text="stats.totalMeetings"
+              ></p>
+            </div>
+            <div
+              class="flex flex-col gap-2 rounded-xl bg-[#233348] p-6 border border-slate-800/60"
+            >
+              <div class="flex items-center justify-between">
+                <p class="text-sm font-medium text-[#92a9c9]">Ort. Süre</p>
+                <span class="rounded-full bg-purple-500/10 p-2 text-purple-500"
+                  ><span class="material-symbols-outlined text-[20px]"
+                    >schedule</span
+                  ></span
+                >
+              </div>
+              <p
+                class="text-3xl font-bold text-white"
+                x-text="stats.avgDuration + 'm'"
+              ></p>
+            </div>
+            <div
+              class="flex flex-col gap-2 rounded-xl bg-[#233348] p-6 border border-slate-800/60"
+            >
+              <div class="flex items-center justify-between">
+                <p class="text-sm font-medium text-[#92a9c9]">Aktif Oda</p>
+                <span class="rounded-full bg-orange-500/10 p-2 text-orange-500"
+                  ><span class="material-symbols-outlined text-[20px]"
+                    >meeting_room</span
+                  ></span
+                >
+              </div>
+              <p
+                class="text-3xl font-bold text-white"
+                x-text="stats.activeRooms"
+              ></p>
+            </div>
+          </div>
+
+          <!-- Rooms Table -->
+          <div class="flex flex-col gap-4">
+            <h3 class="text-lg font-bold text-white px-1">Son Aktivite</h3>
+            <div
+              class="overflow-hidden rounded-xl border border-slate-800 bg-[#161f2b]"
+            >
+              <table class="w-full text-left text-sm text-slate-400">
+                <thead
+                  class="border-b border-slate-800 bg-[#1c2635] text-xs uppercase"
+                >
+                  <tr>
+                    <th class="px-6 py-4 font-semibold">Oda Adı</th>
+                    <th class="px-6 py-4 font-semibold">Davet Kodu</th>
+                    <th class="px-6 py-4 font-semibold">Durum</th>
+                    <th class="px-6 py-4 font-semibold text-right">İşlemler</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800">
+                  <template x-for="room in filteredRooms" :key="room.id">
+                    <tr class="hover:bg-[#1e2a3b]">
+                      <td class="px-6 py-4">
+                        <div class="flex items-center gap-3">
+                          <div
+                            class="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-900/30 text-primary"
+                          >
+                            <span class="material-symbols-outlined"
+                              >videocam</span
+                            >
+                          </div>
+                          <div>
+                            <div
+                              class="font-medium text-white"
+                              x-text="room.name"
+                            ></div>
+                            <div
+                              class="text-xs text-slate-500"
+                              x-text="'ID: ' + room.id.substring(0, 8)"
+                            ></div>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="px-6 py-4">
+                        <div class="flex items-center gap-2">
+                          <code
+                            class="text-xs bg-background-dark px-2 py-1 rounded"
+                            x-text="room.invite_code"
+                          ></code>
+                          <button
+                            @click="copyInviteLink(room.invite_code)"
+                            class="text-slate-400 hover:text-white"
+                          >
+                            <span class="material-symbols-outlined text-[16px]"
+                              >content_copy</span
+                            >
+                          </button>
+                        </div>
+                      </td>
+                      <td class="px-6 py-4">
+                        <span
+                          x-show="room.status === 'active'"
+                          class="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-500"
+                          >Aktif</span
+                        >
+                        <span
+                          x-show="room.status === 'ended'"
+                          class="inline-flex items-center rounded-full bg-slate-700/50 px-2.5 py-0.5 text-xs font-medium text-slate-400"
+                          >Sona Erdi</span
+                        >
+                      </td>
+                      <td class="px-6 py-4 text-right">
+                        <template x-if="room.status === 'active'">
+                          <a
+                            :href="'/room/' + room.id"
+                            class="rounded-lg px-3 py-1.5 text-xs font-bold text-white bg-primary hover:bg-blue-600"
+                            >Katıl</a
+                          >
+                        </template>
+                      </td>
+                    </tr>
+                  </template>
+                  <tr x-show="filteredRooms.length === 0">
+                    <td
+                      colspan="4"
+                      class="px-6 py-12 text-center text-slate-500"
+                    >
+                      <span
+                        class="material-symbols-outlined text-4xl mb-2 block"
+                        >meeting_room</span
+                      >
+                      Henüz oda oluşturmadınız
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- USERS TAB -->
+      <template x-if="activeTab === 'users' && isAdmin">
+        <div class="flex flex-col gap-6">
+          <div class="flex items-center justify-between">
+            <h2 class="text-2xl font-bold text-white">Kullanıcı Yönetimi</h2>
+            <button
+              @click="showAddUserModal = true"
+              class="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700"
+            >
+              <span class="material-symbols-outlined text-[18px]"
+                >person_add</span
+              >Yeni Kullanıcı Ekle
+            </button>
+          </div>
+          <div
+            class="overflow-hidden rounded-xl border border-slate-800 bg-[#161f2b]"
+          >
+            <table class="w-full text-left text-sm text-slate-400">
+              <thead
+                class="border-b border-slate-800 bg-[#1c2635] text-xs uppercase"
+              >
+                <tr>
+                  <th class="px-6 py-4 font-semibold">Kullanıcı</th>
+                  <th class="px-6 py-4 font-semibold">E-posta</th>
+                  <th class="px-6 py-4 font-semibold">Rol</th>
+                  <th class="px-6 py-4 font-semibold text-right">İşlemler</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800">
+                <template x-for="u in users" :key="u.id">
+                  <tr class="hover:bg-[#1e2a3b]">
+                    <td class="px-6 py-4">
+                      <div class="flex items-center gap-3">
+                        <div
+                          class="h-10 w-10 rounded-full flex items-center justify-center text-white font-bold"
+                          :class="u.role === 'admin' ? 'bg-orange-500' : 'bg-primary'"
+                        >
+                          <span
+                            x-text="u.username.charAt(0).toUpperCase()"
+                          ></span>
+                        </div>
+                        <span
+                          class="font-medium text-white"
+                          x-text="u.username"
+                        ></span>
+                      </div>
+                    </td>
+                    <td class="px-6 py-4" x-text="u.email"></td>
+                    <td class="px-6 py-4">
+                      <span
+                        x-show="u.role === 'admin'"
+                        class="inline-flex items-center rounded-full bg-orange-500/10 px-2.5 py-0.5 text-xs font-medium text-orange-400"
+                        >Admin</span
+                      >
+                      <span
+                        x-show="u.role === 'user'"
+                        class="inline-flex items-center rounded-full bg-blue-500/10 px-2.5 py-0.5 text-xs font-medium text-blue-400"
+                        >Kullanıcı</span
+                      >
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                      <button
+                        x-show="u.role !== 'admin'"
+                        @click="deleteUser(u.id, u.username)"
+                        class="text-red-400 hover:text-red-300"
+                      >
+                        <span class="material-symbols-outlined text-[18px]"
+                          >delete</span
+                        >
+                      </button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+    </div>
+  </main>
+
+  <!-- Create Room Modal -->
+  <div
+    x-show="showCreateModal"
+    x-transition.opacity
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+  >
+    <div
+      @click.away="showCreateModal = false"
+      class="w-full max-w-md bg-[#1b2431] rounded-xl border border-slate-800 shadow-2xl"
+    >
+      <div class="p-6">
+        <h3 class="text-xl font-bold mb-4 text-white">Yeni Oda Oluştur</h3>
+        <form @submit.prevent="createRoom">
+          <div class="flex flex-col gap-4">
+            <div>
+              <label class="text-sm font-medium mb-2 block text-slate-200"
+                >Oda Adı</label
+              >
+              <input
+                x-model="newRoomName"
+                type="text"
+                placeholder="Örn: Haftalık Toplantı"
+                required
+                class="w-full rounded-lg border border-slate-700 bg-[#111822] px-4 py-3 text-white placeholder-slate-500 focus:border-primary focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label class="text-sm font-medium mb-2 block text-slate-200"
+                >Max İzleyici</label
+              >
+              <select
+                x-model="newRoomMaxViewers"
+                class="w-full rounded-lg border border-slate-700 bg-[#111822] px-4 py-3 text-white focus:border-primary focus:ring-primary"
+              >
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+              </select>
+            </div>
+          </div>
+          <div class="flex gap-3 mt-6">
+            <button
+              type="button"
+              @click="showCreateModal = false"
+              class="flex-1 px-4 py-3 rounded-lg border border-slate-700 text-slate-400 hover:bg-[#233348]"
+            >
+              İptal
+            </button>
+            <button
+              type="submit"
+              :disabled="creatingRoom"
+              class="flex-1 px-4 py-3 rounded-lg bg-primary text-white font-bold hover:bg-blue-600 disabled:opacity-50"
+            >
+              <span
+                x-text="creatingRoom ? 'Oluşturuluyor...' : 'Oluştur'"
+              ></span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add User Modal -->
+  <div
+    x-show="showAddUserModal"
+    x-transition.opacity
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+  >
+    <div
+      @click.away="showAddUserModal = false"
+      class="w-full max-w-md bg-[#1b2431] rounded-xl border border-slate-800 shadow-2xl"
+    >
+      <div class="p-6">
+        <h3 class="text-xl font-bold mb-4 flex items-center gap-2 text-white">
+          <span class="material-symbols-outlined text-green-500"
+            >person_add</span
+          >Yeni Kullanıcı Ekle
+        </h3>
+        <div
+          x-show="addUserError"
+          class="mb-4 bg-red-500/10 border border-red-500/20 rounded-lg p-3"
+        >
+          <p class="text-sm text-red-400" x-text="addUserError"></p>
+        </div>
+        <form @submit.prevent="addUser">
+          <div class="flex flex-col gap-4">
+            <div>
+              <label class="text-sm font-medium mb-2 block text-slate-200"
+                >Kullanıcı Adı</label
+              >
+              <input
+                x-model="newUser.username"
+                type="text"
+                placeholder="kullanici_adi"
+                required
+                class="w-full rounded-lg border border-slate-700 bg-[#111822] px-4 py-3 text-white placeholder-slate-500 focus:border-primary focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label class="text-sm font-medium mb-2 block text-slate-200"
+                >E-posta</label
+              >
+              <input
+                x-model="newUser.email"
+                type="email"
+                placeholder="kullanici@sirket.com"
+                required
+                class="w-full rounded-lg border border-slate-700 bg-[#111822] px-4 py-3 text-white placeholder-slate-500 focus:border-primary focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label class="text-sm font-medium mb-2 block text-slate-200"
+                >Şifre</label
+              >
+              <input
+                x-model="newUser.password"
+                type="password"
+                placeholder="En az 6 karakter"
+                required
+                minlength="6"
+                class="w-full rounded-lg border border-slate-700 bg-[#111822] px-4 py-3 text-white placeholder-slate-500 focus:border-primary focus:ring-primary"
+                autocomplete="new-password"
+              />
+            </div>
+          </div>
+          <div class="flex gap-3 mt-6">
+            <button
+              type="button"
+              @click="showAddUserModal = false; addUserError = ''"
+              class="flex-1 px-4 py-3 rounded-lg border border-slate-700 text-slate-400 hover:bg-[#233348]"
+            >
+              İptal
+            </button>
+            <button
+              type="submit"
+              :disabled="addingUser"
+              class="flex-1 px-4 py-3 rounded-lg bg-green-600 text-white font-bold hover:bg-green-700 disabled:opacity-50"
+            >
+              <span
+                x-text="addingUser ? 'Ekleniyor...' : 'Kullanıcı Ekle'"
+              ></span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function dashboardPage() {
+    return {
+      user: null,
+      rooms: [],
+      users: [],
+      isAdmin: false,
+      activeTab: "rooms",
+      showUserMenu: false,
+      showCreateModal: false,
+      showAddUserModal: false,
+      newRoomName: "",
+      newRoomMaxViewers: "3",
+      creatingRoom: false,
+      joinCode: "",
+      searchQuery: "",
+      newUser: { username: "", email: "", password: "" },
+      addingUser: false,
+      addUserError: "",
+      stats: { totalMeetings: 0, avgDuration: 45, activeRooms: 0 },
+
+      get filteredRooms() {
+        if (!this.searchQuery) return this.rooms;
+        const q = this.searchQuery.toLowerCase();
+        return this.rooms.filter(
+          (r) =>
+            r.name.toLowerCase().includes(q) ||
+            r.invite_code.toLowerCase().includes(q)
+        );
+      },
+
+      async init() {
+        if (!Auth.requireAuth()) return;
+        this.user = Auth.getUser();
+        this.isAdmin = Auth.isAdmin();
+        if (!this.user) {
+          this.user = await Auth.fetchUserInfo();
+          this.isAdmin = this.user?.role === "admin";
+        }
+        await this.loadRooms();
+        if (this.isAdmin) await this.loadUsers();
+      },
+
+      async loadRooms() {
+        try {
+          const response = await Auth.fetchWithAuth("/api/rooms");
+          if (response && response.ok) {
+            this.rooms = await response.json();
+            this.stats.totalMeetings = this.rooms.length;
+            this.stats.activeRooms = this.rooms.filter(
+              (r) => r.status === "active"
+            ).length;
+          }
+        } catch (e) {
+          console.error("Failed to load rooms:", e);
+        }
+      },
+
+      async loadUsers() {
+        try {
+          const response = await Auth.fetchWithAuth("/api/auth/users");
+          if (response && response.ok) this.users = await response.json();
+        } catch (e) {
+          console.error("Failed to load users:", e);
+        }
+      },
+
+      async createRoom() {
+        this.creatingRoom = true;
+        try {
+          const response = await Auth.fetchWithAuth("/api/rooms", {
+            method: "POST",
+            body: JSON.stringify({
+              name: this.newRoomName,
+              max_viewers: parseInt(this.newRoomMaxViewers),
+            }),
+          });
+          if (response && response.ok) {
+            const room = await response.json();
+            this.showCreateModal = false;
+            this.newRoomName = "";
+            window.location.href = "/room/" + room.id;
+          }
+        } catch (e) {
+          console.error("Failed to create room:", e);
+        } finally {
+          this.creatingRoom = false;
+        }
+      },
+
+      async addUser() {
+        this.addingUser = true;
+        this.addUserError = "";
+        try {
+          const response = await Auth.fetchWithAuth("/api/auth/users", {
+            method: "POST",
+            body: JSON.stringify(this.newUser),
+          });
+          if (response && response.ok) {
+            this.showAddUserModal = false;
+            this.newUser = { username: "", email: "", password: "" };
+            await this.loadUsers();
+          } else {
+            const err = await response.json();
+            this.addUserError = err.detail || "Kullanıcı eklenemedi";
+          }
+        } catch (e) {
+          this.addUserError = "Bir hata oluştu";
+        } finally {
+          this.addingUser = false;
+        }
+      },
+
+      async deleteUser(userId, username) {
+        if (
+          !confirm(
+            `"${username}" kullanıcısını silmek istediğinize emin misiniz?`
+          )
+        )
+          return;
+        try {
+          const response = await Auth.fetchWithAuth(
+            `/api/auth/users/${userId}`,
+            { method: "DELETE" }
+          );
+          if (response && response.ok) await this.loadUsers();
+        } catch (e) {
+          console.error("Failed to delete user:", e);
+        }
+      },
+
+      joinRoom() {
+        if (this.joinCode.trim())
+          window.location.href = "/join/" + this.joinCode.trim();
+      },
+
+      copyInviteLink(code) {
+        navigator.clipboard.writeText(window.location.origin + "/join/" + code);
+        alert("Davet linki kopyalandı!");
+      },
+
+      logout() {
+        Auth.logout();
+      },
+    };
+  }
+</script>
+{% endblock %}

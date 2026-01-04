@@ -1,0 +1,648 @@
+{% extends "base.html" %} {% block title %}Oda - ScreenShare Pro{% endblock %}
+{% block head %}
+<style>
+  .video-container {
+    background: linear-gradient(135deg, #1a2430 0%, #101822 100%);
+  }
+  .control-btn {
+    @apply p-3 rounded-lg transition-colors;
+  }
+  .control-btn:hover {
+    @apply bg-white/10;
+  }
+  .control-btn.active {
+    @apply bg-primary text-white;
+  }
+  .control-btn.danger {
+    @apply bg-red-500 hover:bg-red-600;
+  }
+</style>
+{% endblock %} {% block content %}
+<div
+  x-data="roomPage()"
+  x-init="init()"
+  x-cloak
+  class="min-h-screen flex flex-col bg-background-dark"
+>
+  <!-- Header -->
+  <header
+    class="h-16 flex items-center justify-between px-6 border-b border-border-dark bg-background-dark shrink-0 z-10"
+  >
+    <div class="flex items-center gap-4 text-white">
+      <button
+        @click="leaveRoom()"
+        class="p-2 hover:bg-surface-dark rounded-lg transition-colors"
+      >
+        <span class="material-symbols-outlined text-[24px]">arrow_back</span>
+      </button>
+      <h2
+        class="text-lg font-bold leading-tight tracking-[-0.015em] hidden md:block"
+        x-text="roomName"
+      ></h2>
+    </div>
+
+    <!-- Invite Link (Center) -->
+    <div class="flex-1 flex justify-center">
+      <div
+        class="flex items-center gap-2 bg-surface-dark px-3 py-1.5 rounded-lg border border-border-dark max-w-md"
+      >
+        <span class="material-symbols-outlined text-primary text-[18px]"
+          >link</span
+        >
+        <span
+          class="text-xs text-text-secondary truncate max-w-[200px] md:max-w-[300px] select-all"
+          x-text="getInviteLink()"
+        ></span>
+        <button
+          @click="copyInviteLinkHeader()"
+          class="p-1.5 hover:bg-surface-hover rounded-md transition-colors group"
+          title="Linki Kopyala"
+        >
+          <span
+            class="material-symbols-outlined text-[16px] text-text-secondary group-hover:text-primary transition-colors"
+            x-text="linkCopied ? 'check' : 'content_copy'"
+            :class="linkCopied ? 'text-green-500' : ''"
+          ></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-4">
+      <!-- Recording Timer -->
+      <div
+        x-show="isScreenSharing"
+        class="flex items-center gap-2 bg-surface-dark px-3 py-1.5 rounded-lg border border-border-dark"
+      >
+        <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+        <span
+          class="text-xs font-mono font-medium text-text-secondary"
+          x-text="formatTime(elapsedTime)"
+        ></span>
+      </div>
+      <!-- Connection Status -->
+      <div
+        class="flex items-center gap-2 bg-surface-dark px-3 py-1.5 rounded-lg border border-border-dark"
+      >
+        <span
+          class="material-symbols-outlined text-[18px]"
+          :class="connected ? 'text-green-500' : 'text-red-500'"
+          x-text="connected ? 'signal_cellular_alt' : 'signal_cellular_off'"
+        ></span>
+      </div>
+    </div>
+  </header>
+
+  <div class="flex flex-1 overflow-hidden">
+    <!-- Main Video Area -->
+    <main class="flex-1 flex flex-col relative bg-black/20 p-4 gap-4">
+      <!-- Screen Share Area -->
+      <div
+        class="flex-1 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border-dark video-container relative overflow-hidden"
+      >
+        <!-- Remote Video (for viewers) -->
+        <video
+          x-ref="remoteVideo"
+          x-show="!isHost && remoteStream"
+          autoplay
+          playsinline
+          class="w-full h-full object-contain"
+        ></video>
+
+        <!-- Local Video Preview (for host) -->
+        <video
+          x-ref="localVideo"
+          x-show="isHost && isScreenSharing"
+          autoplay
+          playsinline
+          muted
+          class="w-full h-full object-contain"
+        ></video>
+
+        <!-- Waiting State -->
+        <div
+          x-show="!isScreenSharing && isHost"
+          class="relative z-10 flex flex-col items-center gap-6 p-8 rounded-2xl bg-surface-dark/90 shadow-2xl backdrop-blur-md max-w-md text-center border border-border-dark"
+        >
+          <div
+            class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center"
+          >
+            <span class="material-symbols-outlined text-primary text-[32px]"
+              >present_to_all</span
+            >
+          </div>
+          <div class="space-y-2">
+            <h3 class="text-xl font-bold text-white">Ekran Paylaşımı Başlat</h3>
+            <p class="text-sm text-text-secondary">
+              Ekranınızı paylaşmak için aşağıdaki butona tıklayın.
+            </p>
+          </div>
+          <button
+            @click="startScreenShare()"
+            class="flex items-center justify-center gap-2 px-6 py-3 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors font-medium"
+          >
+            <span class="material-symbols-outlined">screen_share</span>
+            Ekran Paylaş
+          </button>
+        </div>
+
+        <!-- Viewer Waiting -->
+        <div
+          x-show="!isHost && !remoteStream"
+          class="relative z-10 flex flex-col items-center gap-4 p-8 rounded-2xl bg-surface-dark/90 shadow-2xl backdrop-blur-md max-w-md text-center border border-border-dark"
+        >
+          <div
+            class="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center"
+          >
+            <svg
+              class="animate-spin h-8 w-8 text-primary"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+          </div>
+          <div class="space-y-2">
+            <h3 class="text-xl font-bold text-white">Bekleniyor...</h3>
+            <p class="text-sm text-text-secondary">
+              Sunucu ekran paylaşımını başlattığında görüntü burada görünecek.
+            </p>
+          </div>
+        </div>
+
+        <!-- Host Sharing Indicator -->
+        <div x-show="isHost && isScreenSharing" class="absolute top-6 z-10">
+          <div
+            class="bg-surface-dark/80 backdrop-blur-md border border-white/10 px-4 py-1.5 rounded-full flex items-center gap-2 shadow-lg"
+          >
+            <span class="material-symbols-outlined text-primary text-sm"
+              >screen_share</span
+            >
+            <p class="text-slate-200 text-xs font-medium">
+              Ekranınızı paylaşıyorsunuz
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Control Bar -->
+      <div class="flex justify-center pb-4">
+        <div
+          class="flex items-center gap-2 bg-surface-dark border border-border-dark p-2 rounded-xl shadow-lg"
+        >
+          <!-- Mic Toggle -->
+          <button
+            @click="toggleMic()"
+            class="control-btn relative"
+            :class="!isMuted ? 'text-white' : 'text-slate-400'"
+            :title="isMuted ? 'Mikrofonu Aç' : 'Mikrofonu Kapat'"
+          >
+            <span
+              x-show="!isMuted"
+              class="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full border-2 border-surface-dark"
+            ></span>
+            <span
+              class="material-symbols-outlined text-[24px]"
+              x-text="isMuted ? 'mic_off' : 'mic'"
+            ></span>
+          </button>
+
+          <div class="w-px h-8 bg-white/10 mx-1"></div>
+
+          <!-- Screen Share (Host only) -->
+          <template x-if="isHost">
+            <button
+              @click="isScreenSharing ? stopScreenShare() : startScreenShare()"
+              class="flex items-center gap-2 px-4 h-10 rounded-lg font-medium text-sm transition-all"
+              :class="isScreenSharing ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-primary hover:bg-primary-hover text-white shadow-md shadow-primary/20'"
+            >
+              <span
+                class="material-symbols-outlined text-[20px]"
+                x-text="isScreenSharing ? 'stop_screen_share' : 'screen_share'"
+              ></span>
+              <span
+                class="hidden sm:inline"
+                x-text="isScreenSharing ? 'Durdur' : 'Paylaş'"
+              ></span>
+            </button>
+          </template>
+
+          <!-- More Options -->
+          <button class="control-btn text-white" title="Diğer Seçenekler">
+            <span class="material-symbols-outlined text-[24px]">more_vert</span>
+          </button>
+
+          <!-- End Call / Leave -->
+          <button
+            @click="isHost ? endRoom() : leaveRoom()"
+            class="control-btn danger text-white ml-2 shadow-md shadow-red-500/20"
+            :title="isHost ? 'Odayı Sonlandır' : 'Odadan Ayrıl'"
+          >
+            <span class="material-symbols-outlined text-[24px]">call_end</span>
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Sidebar -->
+    <aside
+      class="w-80 border-l border-border-dark bg-background-dark flex flex-col shrink-0 hidden lg:flex"
+    >
+      <!-- Tabs -->
+      <div class="flex border-b border-border-dark">
+        <button
+          @click="activeTab = 'participants'"
+          class="flex-1 py-4 text-sm font-medium border-b-2 transition-colors"
+          :class="activeTab === 'participants' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-text-secondary hover:text-white hover:bg-surface-dark'"
+        >
+          Katılımcılar (<span x-text="participants.length"></span>)
+        </button>
+        <button
+          @click="activeTab = 'chat'"
+          class="flex-1 py-4 text-sm font-medium border-b-2 transition-colors"
+          :class="activeTab === 'chat' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-text-secondary hover:text-white hover:bg-surface-dark'"
+        >
+          Sohbet
+        </button>
+      </div>
+
+      <!-- Participants Tab -->
+      <div
+        x-show="activeTab === 'participants'"
+        class="flex-1 overflow-y-auto p-4 space-y-4"
+      >
+        <!-- Invite Button (Host only) -->
+        <template x-if="isHost">
+          <div class="flex gap-2 mb-4">
+            <button
+              @click="copyInviteLink()"
+              class="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-surface-dark text-xs font-semibold text-white hover:bg-surface-hover transition-colors border border-border-dark"
+            >
+              <span class="material-symbols-outlined text-[16px]"
+                >person_add</span
+              >
+              Davet Et
+            </button>
+          </div>
+        </template>
+
+        <!-- Participant List -->
+        <div class="space-y-2">
+          <template
+            x-for="participant in participants"
+            :key="participant.user_id"
+          >
+            <div
+              class="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-dark transition-colors"
+            >
+              <div class="relative">
+                <div
+                  class="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold"
+                >
+                  <span
+                    x-text="participant.username.charAt(0).toUpperCase()"
+                  ></span>
+                </div>
+                <div
+                  class="absolute -bottom-1 -right-1 bg-green-500 border-2 border-background-dark w-3.5 h-3.5 rounded-full"
+                ></div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-white truncate">
+                  <span x-text="participant.username"></span>
+                  <span
+                    x-show="participant.user_id === currentUserId"
+                    class="text-text-secondary"
+                    >(Sen)</span
+                  >
+                </p>
+                <p
+                  x-show="participant.user_id === hostId"
+                  class="text-xs text-primary"
+                >
+                  Sunucu
+                </p>
+              </div>
+              <!-- Kick Button (Host only, not self) -->
+              <template x-if="isHost && participant.user_id !== currentUserId">
+                <button
+                  @click="kickUser(participant.user_id)"
+                  class="text-slate-400 hover:text-red-400 transition-colors"
+                  title="Çıkar"
+                >
+                  <span class="material-symbols-outlined text-[18px]"
+                    >person_remove</span
+                  >
+                </button>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Chat Tab -->
+      <div x-show="activeTab === 'chat'" class="flex-1 flex flex-col">
+        <!-- Messages -->
+        <div x-ref="chatContainer" class="flex-1 overflow-y-auto p-4 space-y-3">
+          <template x-for="(msg, index) in chatMessages" :key="index">
+            <div
+              class="flex gap-3"
+              :class="msg.user_id === currentUserId ? 'flex-row-reverse' : ''"
+            >
+              <div
+                class="size-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                :class="msg.user_id === currentUserId ? 'bg-primary' : 'bg-emerald-500'"
+              >
+                <span x-text="msg.username.charAt(0).toUpperCase()"></span>
+              </div>
+              <div
+                class="flex flex-col gap-1 max-w-[85%]"
+                :class="msg.user_id === currentUserId ? 'items-end' : ''"
+              >
+                <div
+                  class="flex items-baseline gap-2"
+                  :class="msg.user_id === currentUserId ? 'flex-row-reverse' : ''"
+                >
+                  <span
+                    class="text-xs font-bold text-slate-200"
+                    x-text="msg.username"
+                  ></span>
+                  <span
+                    class="text-[10px] text-slate-400"
+                    x-text="formatMessageTime(msg.timestamp)"
+                  ></span>
+                </div>
+                <div
+                  class="p-3 rounded-lg text-sm shadow-sm"
+                  :class="msg.user_id === currentUserId ? 'bg-primary text-white rounded-tr-none' : 'bg-surface-hover text-slate-200 rounded-tl-none border border-border-dark'"
+                >
+                  <p x-text="msg.message"></p>
+                </div>
+              </div>
+            </div>
+          </template>
+          <div
+            x-show="chatMessages.length === 0"
+            class="text-center text-slate-500 py-8"
+          >
+            <span class="material-symbols-outlined text-3xl mb-2 block"
+              >chat</span
+            >
+            Henüz mesaj yok
+          </div>
+        </div>
+
+        <!-- Chat Input -->
+        <div class="p-4 bg-background-dark border-t border-border-dark">
+          <form
+            @submit.prevent="sendMessage"
+            class="relative flex items-center"
+          >
+            <input
+              x-model="newMessage"
+              type="text"
+              placeholder="Bir mesaj yazın..."
+              class="w-full pl-4 pr-12 py-3 bg-surface-hover border border-border-dark rounded-xl text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+            />
+            <button
+              type="submit"
+              class="absolute right-2 p-1.5 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors"
+            >
+              <span class="material-symbols-outlined text-[18px]">send</span>
+            </button>
+          </form>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script src="/static/js/webrtc.js"></script>
+<script>
+  function roomPage() {
+    return {
+      roomId: "{{ room_id }}",
+      publicUrl: "{{ public_url }}",
+      roomName: "Yükleniyor...",
+      inviteCode: "",
+      hostId: "",
+      currentUserId: "",
+      isHost: false,
+      connected: false,
+      isScreenSharing: false,
+      isMuted: true,
+      remoteStream: null,
+      participants: [],
+      chatMessages: [],
+      newMessage: "",
+      activeTab: "participants",
+      elapsedTime: 0,
+      timerInterval: null,
+      webrtc: null,
+      linkCopied: false,
+
+      getInviteLink() {
+        return this.publicUrl + "/join/" + this.inviteCode;
+      },
+
+      copyInviteLinkHeader() {
+        const link = this.getInviteLink();
+        navigator.clipboard.writeText(link);
+        this.linkCopied = true;
+        setTimeout(() => {
+          this.linkCopied = false;
+        }, 2000);
+      },
+
+      async init() {
+        if (!Auth.requireAuth()) return;
+
+        const user = Auth.getUser();
+        this.currentUserId = user?.id;
+
+        // Load room info
+        await this.loadRoomInfo();
+
+        // Initialize WebRTC
+        this.webrtc = new WebRTCManager(this.roomId, this.isHost);
+
+        this.webrtc.onParticipantUpdate = (participants, data) => {
+          this.participants = participants;
+          if (data.room_name) this.roomName = data.room_name;
+          if (data.host_id) this.hostId = data.host_id;
+          if (data.is_host !== undefined) this.isHost = data.is_host;
+        };
+
+        this.webrtc.onRemoteStream = (stream) => {
+          this.remoteStream = stream;
+          if (stream && this.$refs.remoteVideo) {
+            this.$refs.remoteVideo.srcObject = stream;
+          }
+        };
+
+        this.webrtc.onChatMessage = (msg) => {
+          this.chatMessages.push(msg);
+          this.$nextTick(() => {
+            if (this.$refs.chatContainer) {
+              this.$refs.chatContainer.scrollTop =
+                this.$refs.chatContainer.scrollHeight;
+            }
+          });
+        };
+
+        this.webrtc.onConnectionStateChange = (state) => {
+          this.connected = state === "connected" || state !== "disconnected";
+        };
+
+        // Connect WebSocket
+        try {
+          await this.webrtc.connect();
+          this.connected = true;
+        } catch (e) {
+          console.error("Connection failed:", e);
+          alert("Bağlantı kurulamadı");
+          window.location.href = "/dashboard";
+        }
+      },
+
+      async loadRoomInfo() {
+        try {
+          const response = await Auth.fetchWithAuth(
+            "/api/rooms/" + this.roomId
+          );
+          if (response && response.ok) {
+            const room = await response.json();
+            this.roomName = room.name;
+            this.inviteCode = room.invite_code;
+            this.hostId = room.host_id;
+            this.isHost = room.host_id === this.currentUserId;
+          }
+        } catch (e) {
+          console.error("Failed to load room:", e);
+        }
+      },
+
+      async startScreenShare() {
+        try {
+          const stream = await this.webrtc.startScreenShare();
+          this.isScreenSharing = true;
+          if (this.$refs.localVideo) {
+            this.$refs.localVideo.srcObject = stream;
+          }
+          this.startTimer();
+        } catch (e) {
+          console.error("Screen share failed:", e);
+          if (e.name !== "NotAllowedError") {
+            alert("Ekran paylaşımı başlatılamadı");
+          }
+        }
+      },
+
+      stopScreenShare() {
+        this.webrtc.stopScreenShare();
+        this.isScreenSharing = false;
+        if (this.$refs.localVideo) {
+          this.$refs.localVideo.srcObject = null;
+        }
+        this.stopTimer();
+      },
+
+      async toggleMic() {
+        if (this.isMuted) {
+          try {
+            await this.webrtc.addAudioTrack();
+            this.isMuted = false;
+          } catch (e) {
+            console.error("Mic error:", e);
+            alert("Mikrofon erişimi sağlanamadı");
+          }
+        } else {
+          this.isMuted = this.webrtc.toggleMute();
+        }
+      },
+
+      sendMessage() {
+        if (!this.newMessage.trim()) return;
+        this.webrtc.sendChatMessage(this.newMessage.trim());
+        this.newMessage = "";
+      },
+
+      kickUser(userId) {
+        if (
+          confirm("Bu kullanıcıyı odadan çıkarmak istediğinize emin misiniz?")
+        ) {
+          this.webrtc.kickUser(userId);
+        }
+      },
+
+      copyInviteLink() {
+        const link = this.publicUrl + "/join/" + this.inviteCode;
+        navigator.clipboard.writeText(link);
+        alert("Davet linki kopyalandı!");
+      },
+
+      leaveRoom() {
+        if (confirm("Odadan ayrılmak istediğinize emin misiniz?")) {
+          this.webrtc.disconnect();
+          window.location.href = "/dashboard";
+        }
+      },
+
+      endRoom() {
+        if (
+          confirm(
+            "Odayı sonlandırmak istediğinize emin misiniz? Tüm katılımcılar çıkarılacak."
+          )
+        ) {
+          this.webrtc.endRoom();
+          setTimeout(() => {
+            window.location.href = "/dashboard";
+          }, 500);
+        }
+      },
+
+      startTimer() {
+        this.elapsedTime = 0;
+        this.timerInterval = setInterval(() => {
+          this.elapsedTime++;
+        }, 1000);
+      },
+
+      stopTimer() {
+        if (this.timerInterval) {
+          clearInterval(this.timerInterval);
+          this.timerInterval = null;
+        }
+      },
+
+      formatTime(seconds) {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = seconds % 60;
+        return [h, m, s].map((v) => v.toString().padStart(2, "0")).join(":");
+      },
+
+      formatMessageTime(timestamp) {
+        if (!timestamp) return "";
+        const date = new Date(timestamp);
+        return date.toLocaleTimeString("tr-TR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      },
+    };
+  }
+</script>
+{% endblock %}

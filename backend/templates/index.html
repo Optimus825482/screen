@@ -1,0 +1,141 @@
+{% extends "base.html" %} {% block title %}ScreenShare Pro - Web Tabanlı Ekran
+Paylaşım Platformu{% endblock %} {% block content %}
+<div
+  x-data="{ isAuth: false }"
+  x-init="isAuth = Auth.isAuthenticated()"
+  class="min-h-screen flex flex-col"
+>
+  <!-- Header -->
+  <header
+    class="w-full border-b border-border-dark px-6 md:px-10 py-4 flex items-center justify-between"
+  >
+    <a href="/" class="flex items-center gap-4 text-white">
+      <div class="size-8 text-primary">
+        <svg
+          class="w-full h-full"
+          fill="none"
+          viewBox="0 0 48 48"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            clip-rule="evenodd"
+            d="M39.475 21.6262C40.358 21.4363 40.6863 21.5589 40.7581 21.5934C40.7876 21.655 40.8547 21.857 40.8082 22.3336C40.7408 23.0255 40.4502 24.0046 39.8572 25.2301C38.6799 27.6631 36.5085 30.6631 33.5858 33.5858C30.6631 36.5085 27.6632 38.6799 25.2301 39.8572C24.0046 40.4502 23.0255 40.7407 22.3336 40.8082C21.8571 40.8547 21.6551 40.7875 21.5934 40.7581C21.5589 40.6863 21.4363 40.358 21.6262 39.475C21.8562 38.4054 22.4689 36.9657 23.5038 35.2817C24.7575 33.2417 26.5497 30.9744 28.7621 28.762C30.9744 26.5497 33.2417 24.7574 35.2817 23.5037C36.9657 22.4689 38.4054 21.8562 39.475 21.6262ZM4.41189 29.2403L18.7597 43.5881C19.8813 44.7097 21.4027 44.9179 22.7217 44.7893C24.0585 44.659 25.5148 44.1631 26.9723 43.4579C29.9052 42.0387 33.2618 39.5667 36.4142 36.4142C39.5667 33.2618 42.0387 29.9052 43.4579 26.9723C44.1631 25.5148 44.659 24.0585 44.7893 22.7217C44.9179 21.4027 44.7097 19.8813 43.5881 18.7597L29.2403 4.41187C27.8527 3.02428 25.8765 3.02573 24.2861 3.36776C22.6081 3.72863 20.7334 4.58419 18.8396 5.74801C16.4978 7.18716 13.9881 9.18353 11.5858 11.5858C9.18354 13.988 7.18717 16.4978 5.74802 18.8396C4.58421 20.7334 3.72865 22.6081 3.36778 24.2861C3.02574 25.8765 3.02429 27.8527 4.41189 29.2403Z"
+            fill="currentColor"
+            fill-rule="evenodd"
+          ></path>
+        </svg>
+      </div>
+      <h2 class="text-lg font-bold leading-tight tracking-[-0.015em]">
+        ScreenShare Pro
+      </h2>
+    </a>
+    <div class="flex items-center gap-4">
+      <template x-if="!isAuth">
+        <div class="flex items-center gap-3">
+          <a
+            href="/login"
+            class="text-sm font-medium text-text-secondary hover:text-white transition-colors"
+            >Giriş Yap</a
+          >
+          <a
+            href="/register"
+            class="flex items-center justify-center rounded-lg h-10 px-5 bg-primary hover:bg-primary-hover text-white text-sm font-bold transition-colors"
+          >
+            Ücretsiz Başla
+          </a>
+        </div>
+      </template>
+      <template x-if="isAuth">
+        <a
+          href="/dashboard"
+          class="flex items-center justify-center rounded-lg h-10 px-5 bg-primary hover:bg-primary-hover text-white text-sm font-bold transition-colors"
+        >
+          Kontrol Paneli
+        </a>
+      </template>
+    </div>
+  </header>
+</div>
+
+    <!-- Hero Section -->
+    <main class="flex-1">
+        <section class="relative overflow-hidden py-20 md:py-32">
+            <!-- Background -->
+            <div class="absolute inset-0 overflow-hidden pointer-events-none">
+                <div class="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-primary/10 rounded-full blur-[120px]"></div>
+                <div class="absolute bottom-[-20%] right-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[100px]"></div>
+            </div>
+
+            <div class="relative z-10 max-w-6xl mx-auto px-6 text-center">
+                <div class="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-2 text-sm font-medium text-primary mb-8">
+                    <span class="material-symbols-outlined text-[16px]">verified</span>
+                    Kurumsal Güvenlik Standartları
+                </div>
+
+                <h1 class="text-4xl md:text-6xl font-black tracking-tight text-white mb-6 leading-tight">
+                    Güvenli Ekran Paylaşımı<br>
+                    <span class="text-primary">Her Yerden</span>
+                </h1>
+
+                <p class="text-lg md:text-xl text-text-secondary max-w-2xl mx-auto mb-10">
+                    Firewall arkasındaki kullanıcılarla bile sorunsuz ekran paylaşımı yapın. 
+                    Kurulum gerektirmez, tarayıcınız yeterli.
+                </p>
+
+                <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+                    <a href="/register" class="flex items-center justify-center gap-2 rounded-lg h-14 px-8 bg-primary hover:bg-primary-hover text-white text-base font-bold transition-all shadow-lg shadow-primary/30">
+                        <span class="material-symbols-outlined">rocket_launch</span>
+                        Hemen Başla
+                    </a>
+                    <a href="#features" class="flex items-center justify-center gap-2 rounded-lg h-14 px-8 border border-border-dark text-white hover:bg-surface-dark text-base font-medium transition-colors">
+                        <span class="material-symbols-outlined">play_circle</span>
+                        Nasıl Çalışır?
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section id="features" class="py-20 border-t border-border-dark">
+            <div class="max-w-6xl mx-auto px-6">
+                <h2 class="text-3xl font-bold text-center text-white mb-12">Neden ScreenShare Pro?</h2>
+                <div class="grid md:grid-cols-3 gap-8">
+                    <div class="p-6 rounded-xl bg-surface-dark border border-border-dark">
+                        <div class="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary mb-4">
+                            <span class="material-symbols-outlined text-2xl">security</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-2">Kurumsal Güvenlik</h3>
+                        <p class="text-text-secondary text-sm">HTTPS, WebRTC DTLS-SRTP şifreleme ve JWT tabanlı kimlik doğrulama.</p>
+                    </div>
+                    <div class="p-6 rounded-xl bg-surface-dark border border-border-dark">
+                        <div class="w-12 h-12 rounded-lg bg-green-500/10 flex items-center justify-center text-green-500 mb-4">
+                            <span class="material-symbols-outlined text-2xl">bolt</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-2">Anında Başlat</h3>
+                        <p class="text-text-secondary text-sm">Kurulum yok, indirme yok. Tarayıcınızı açın ve paylaşmaya başlayın.</p>
+                    </div>
+                    <div class="p-6 rounded-xl bg-surface-dark border border-border-dark">
+                        <div class="w-12 h-12 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500 mb-4">
+                            <span class="material-symbols-outlined text-2xl">lan</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-2">Firewall Dostu</h3>
+                        <p class="text-text-secondary text-sm">TURN sunucusu ile NAT/Firewall arkasındaki kullanıcılara erişim.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-border-dark py-8">
+        <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
+            <p class="text-sm text-text-secondary">© 2026 ScreenShare Pro. Tüm hakları saklıdır.</p>
+            <div class="flex items-center gap-6 text-sm text-text-secondary">
+                <a href="#" class="hover:text-white transition-colors">Gizlilik</a>
+                <a href="#" class="hover:text-white transition-colors">Şartlar</a>
+                <a href="#" class="hover:text-white transition-colors">İletişim</a>
+            </div>
+        </div>
+    </footer>
+</div>
+{% endblock %}

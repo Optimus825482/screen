@@ -1,0 +1,280 @@
+{% extends "base.html" %} {% block title %}Toplantıya Katıl - ScreenShare Pro{%
+endblock %} {% block content %}
+<div
+  x-data="joinPage()"
+  x-init="init()"
+  x-cloak
+  class="min-h-screen flex flex-col"
+>
+  <!-- Header -->
+  <header
+    class="w-full border-b border-border-dark bg-background-dark/80 backdrop-blur-sm sticky top-0 z-50"
+  >
+    <div
+      class="px-4 md:px-10 py-3 flex items-center justify-between mx-auto max-w-7xl"
+    >
+      <a href="/" class="flex items-center gap-3 text-white group">
+        <div
+          class="size-8 text-primary transition-transform duration-300 group-hover:scale-110"
+        >
+          <svg
+            class="w-full h-full"
+            fill="none"
+            viewBox="0 0 48 48"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              clip-rule="evenodd"
+              d="M39.475 21.6262C40.358 21.4363 40.6863 21.5589 40.7581 21.5934C40.7876 21.655 40.8547 21.857 40.8082 22.3336C40.7408 23.0255 40.4502 24.0046 39.8572 25.2301C38.6799 27.6631 36.5085 30.6631 33.5858 33.5858C30.6631 36.5085 27.6632 38.6799 25.2301 39.8572C24.0046 40.4502 23.0255 40.7407 22.3336 40.8082C21.8571 40.8547 21.6551 40.7875 21.5934 40.7581C21.5589 40.6863 21.4363 40.358 21.6262 39.475C21.8562 38.4054 22.4689 36.9657 23.5038 35.2817C24.7575 33.2417 26.5497 30.9744 28.7621 28.762C30.9744 26.5497 33.2417 24.7574 35.2817 23.5037C36.9657 22.4689 38.4054 21.8562 39.475 21.6262ZM4.41189 29.2403L18.7597 43.5881C19.8813 44.7097 21.4027 44.9179 22.7217 44.7893C24.0585 44.659 25.5148 44.1631 26.9723 43.4579C29.9052 42.0387 33.2618 39.5667 36.4142 36.4142C39.5667 33.2618 42.0387 29.9052 43.4579 26.9723C44.1631 25.5148 44.659 24.0585 44.7893 22.7217C44.9179 21.4027 44.7097 19.8813 43.5881 18.7597L29.2403 4.41187C27.8527 3.02428 25.8765 3.02573 24.2861 3.36776C22.6081 3.72863 20.7334 4.58419 18.8396 5.74801C16.4978 7.18716 13.9881 9.18353 11.5858 11.5858C9.18354 13.988 7.18717 16.4978 5.74802 18.8396C4.58421 20.7334 3.72865 22.6081 3.36778 24.2861C3.02574 25.8765 3.02429 27.8527 4.41189 29.2403Z"
+              fill="currentColor"
+              fill-rule="evenodd"
+            ></path>
+          </svg>
+        </div>
+        <h2 class="text-lg font-bold leading-tight tracking-[-0.015em]">
+          ScreenShare Pro
+        </h2>
+      </a>
+      <template x-if="!isAuthenticated">
+        <a
+          href="/login"
+          class="flex min-w-[84px] cursor-pointer items-center justify-center rounded-lg h-9 px-4 bg-surface-hover hover:bg-[#2f425a] text-white text-sm font-bold transition-colors"
+        >
+          Giriş Yap
+        </a>
+      </template>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main
+    class="flex-grow flex flex-col items-center justify-center p-4 md:p-6 w-full relative"
+  >
+    <!-- Background -->
+    <div class="absolute inset-0 overflow-hidden pointer-events-none">
+      <div
+        class="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] bg-primary/10 rounded-full blur-[120px]"
+      ></div>
+      <div
+        class="absolute top-[40%] -right-[10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[100px]"
+      ></div>
+    </div>
+
+    <!-- Join Card -->
+    <div
+      class="w-full max-w-[520px] bg-surface-dark rounded-xl md:rounded-2xl shadow-xl border border-border-dark relative z-10 overflow-hidden flex flex-col"
+    >
+      <div class="px-6 py-10 md:px-10 md:py-12 flex flex-col gap-8">
+        <div class="text-center flex flex-col gap-2">
+          <div
+            class="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-2 text-primary"
+          >
+            <span class="material-symbols-outlined text-3xl">add_to_queue</span>
+          </div>
+          <h1
+            class="text-white text-2xl md:text-3xl font-black leading-tight tracking-[-0.02em]"
+          >
+            Toplantıya Katıl
+          </h1>
+          <p
+            class="text-text-secondary text-sm md:text-base max-w-[360px] mx-auto"
+          >
+            Sunucu tarafından sağlanan toplantı davet kodunu girin.
+          </p>
+        </div>
+
+        <!-- Error -->
+        <div
+          x-show="error"
+          x-transition
+          class="bg-red-500/10 border border-red-500/20 rounded-lg p-3"
+        >
+          <p class="text-sm text-red-400" x-text="error"></p>
+        </div>
+
+        <!-- Room Info (if found) -->
+        <div
+          x-show="room"
+          x-transition
+          class="bg-green-500/10 border border-green-500/20 rounded-lg p-4"
+        >
+          <div class="flex items-center gap-3">
+            <div
+              class="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center text-green-500"
+            >
+              <span class="material-symbols-outlined">meeting_room</span>
+            </div>
+            <div>
+              <p class="font-medium text-white" x-text="room?.name"></p>
+              <p class="text-xs text-green-400">
+                Oda bulundu - Katılmaya hazır
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <form @submit.prevent="joinRoom" class="flex flex-col gap-5">
+          <div class="flex flex-col gap-1.5">
+            <label
+              class="text-xs font-semibold uppercase tracking-wider text-text-secondary ml-1"
+              for="invite-code"
+              >Davet Kodu</label
+            >
+            <div class="relative group">
+              <div
+                class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"
+              >
+                <span
+                  class="material-symbols-outlined text-slate-500 group-focus-within:text-primary transition-colors"
+                  >keyboard</span
+                >
+              </div>
+              <input
+                x-model="inviteCode"
+                :value="inviteCode"
+                type="text"
+                id="invite-code"
+                placeholder="Davet kodunu girin"
+                required
+                class="block w-full rounded-lg border-0 py-4 pl-12 pr-4 text-white bg-surface-hover ring-1 ring-inset ring-transparent placeholder:text-slate-500 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-lg shadow-sm transition-all text-center"
+              />
+            </div>
+          </div>
+
+          <!-- Login Required Notice -->
+          <div
+            x-show="!isAuthenticated"
+            class="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3"
+          >
+            <p class="text-sm text-yellow-400">
+              <span
+                class="material-symbols-outlined text-[16px] align-middle mr-1"
+                >info</span
+              >
+              Odaya katılmak için giriş yapmanız gerekiyor.
+            </p>
+          </div>
+
+          <template x-if="isAuthenticated">
+            <button
+              type="submit"
+              :disabled="loading || !inviteCode"
+              class="flex w-full cursor-pointer items-center justify-center rounded-lg h-12 md:h-14 px-5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-base font-bold transition-all shadow-lg shadow-primary/25"
+            >
+              <span x-show="!loading">Odaya Katıl</span>
+              <span x-show="loading" class="flex items-center gap-2">
+                <svg
+                  class="animate-spin h-5 w-5"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    class="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    stroke-width="4"
+                  ></circle>
+                  <path
+                    class="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                Katılınıyor...
+              </span>
+            </button>
+          </template>
+
+          <template x-if="!isAuthenticated">
+            <a
+              href="/login"
+              class="flex w-full items-center justify-center rounded-lg h-12 md:h-14 px-5 bg-primary hover:bg-primary/90 text-white text-base font-bold transition-all shadow-lg shadow-primary/25"
+            >
+              Giriş Yap ve Katıl
+            </a>
+          </template>
+        </form>
+      </div>
+
+      <div class="bg-[#131b24] p-4 text-center border-t border-border-dark">
+        <a
+          class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-white transition-colors"
+          href="#"
+        >
+          <span class="material-symbols-outlined text-base">help</span>
+          <span>Katılmada sorun mu yaşıyorsunuz? Yardım alın.</span>
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer
+    class="w-full py-8 mt-auto border-t border-border-dark bg-background-dark"
+  >
+    <div
+      class="flex flex-col md:flex-row items-center justify-between gap-6 max-w-[960px] mx-auto px-6 text-center md:text-left"
+    >
+      <p class="text-slate-500 text-sm">
+        © 2026 ScreenShare Pro. Tüm hakları saklıdır.
+      </p>
+      <div class="flex flex-wrap items-center justify-center gap-6">
+        <a
+          class="text-slate-500 hover:text-primary text-sm transition-colors"
+          href="#"
+          >Gizlilik Politikası</a
+        >
+        <a
+          class="text-slate-500 hover:text-primary text-sm transition-colors"
+          href="#"
+          >Hizmet Şartları</a
+        >
+      </div>
+    </div>
+  </footer>
+</div>
+
+<script>
+  function joinPage() {
+    return {
+      inviteCode: "{{ invite_code }}",
+      isAuthenticated: false,
+      loading: false,
+      error: "",
+      room: null,
+
+      init() {
+        this.isAuthenticated = Auth.isAuthenticated();
+      },
+
+      async joinRoom() {
+        if (!this.inviteCode.trim()) return;
+
+        this.loading = true;
+        this.error = "";
+
+        try {
+          const response = await Auth.fetchWithAuth(
+            "/api/rooms/join/" + this.inviteCode.trim()
+          );
+
+          if (response && response.ok) {
+            const room = await response.json();
+            window.location.href = "/room/" + room.id;
+          } else if (response) {
+            const data = await response.json();
+            this.error = data.detail || "Odaya katılınamadı";
+          }
+        } catch (e) {
+          this.error = "Bir hata oluştu";
+        } finally {
+          this.loading = false;
+        }
+      },
+    };
+  }
+</script>
+{% endblock %}

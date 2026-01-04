@@ -1,0 +1,33 @@
+# Environment files (hassas bilgiler)
+.env
+backend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Docker volumes (local)
+postgres_data/
+redis_data/
+
+# Byte-compiled
+*.pyc

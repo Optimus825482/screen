@@ -1,0 +1,84 @@
+version: "3.8"
+
+services:
+  api:
+    build: ./backend
+    container_name: screenshare-api
+    ports:
+      - "8005:8005"
+    environment:
+      # Database - aynı network'teki postgres'e bağlan
+      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-screenshare2025}@db:5432/screenshare
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      # JWT - Coolify'da environment variable olarak ayarla
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
+      # CORS - Domain'ini ekle
+      - CORS_ORIGINS=["https://screen.erkanerdem.net","http://localhost:8000"]
+      # Public URL
+      - PUBLIC_URL=https://screen.erkanerdem.net
+      # Metered TURN Server
+      - METERED_API_KEY=${METERED_API_KEY:-a2278584590ae2fd0bf60959fe0fecb7e3a7}
+      - METERED_API_URL=https://erkan.metered.live/api/v1/turn/credentials
+      - STUN_SERVER=stun:stun.relay.metered.ca:80
+      - TURN_SERVER=turn:standard.relay.metered.ca:443
+      - TURN_SERVER_TCP=turns:standard.relay.metered.ca:443?transport=tcp
+      - TURN_USERNAME=${TURN_USERNAME:-a00785389f1b29a83ff4325a}
+      - TURN_CREDENTIAL=${TURN_CREDENTIAL:-s5K3Fmbw9JY4snea}
+      # Debug
+      - DEBUG=false
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - screenshare-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  db:
+    image: postgres:15-alpine
+    container_name: screenshare-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-screenshare2025}
+      - POSTGRES_DB=screenshare
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - screenshare-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: screenshare-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - screenshare-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  screenshare-network:
+    driver: bridge

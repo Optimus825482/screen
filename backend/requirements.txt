@@ -1,0 +1,31 @@
+# FastAPI & Server
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.12
+
+# Database (Python 3.13 uyumlu)
+sqlalchemy>=2.0.36
+asyncpg>=0.30.0
+alembic>=1.14.0
+
+# Redis
+redis>=5.2.0
+
+# Authentication
+python-jose[cryptography]>=3.3.0
+bcrypt>=4.2.0
+
+# Validation
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+email-validator>=2.2.0
+
+# WebSocket
+websockets>=14.0
+
+# Utils
+python-dotenv>=1.0.1
+httpx>=0.28.0
+
+# Templates
+jinja2>=3.1.4
