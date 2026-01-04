@@ -12,8 +12,12 @@ class WebRTCManager {
     this.onParticipantUpdate = null;
     this.onChatMessage = null;
     this.onConnectionStateChange = null;
+    this.onPresenterChange = null; // Yeni: Presenter değiştiğinde callback
     this.isScreenSharing = false;
     this.isMuted = true;
+    this.currentPresenterId = null; // Şu an kim paylaşıyor
+    this.currentPresenterName = null;
+    this.myUserId = null;
 
     // Metered TURN Server config (API'den güncellenecek)
     this.config = {
@@ -130,14 +134,18 @@ class WebRTCManager {
         if (this.onParticipantUpdate) {
           this.onParticipantUpdate(data.participants, data);
         }
+        // Kendi user_id'mizi kaydet
+        this.myUserId = data.participants.find(
+          (p) => p.username === data.room_name
+        )?.user_id;
         break;
 
       case "user_joined":
         if (this.onParticipantUpdate) {
           this.onParticipantUpdate(data.participants, data);
         }
-        // Host ise yeni kullanıcıya offer gönder
-        if (this.isHost && this.isScreenSharing) {
+        // Eğer biz paylaşıyorsak yeni kullanıcıya offer gönder
+        if (this.isScreenSharing) {
           await this.createOfferForUser(data.user_id);
         }
         break;
@@ -147,18 +155,29 @@ class WebRTCManager {
         if (this.onParticipantUpdate) {
           this.onParticipantUpdate(data.participants, data);
         }
+        // Ayrılan kişi presenter ise temizle
+        if (data.user_id === this.currentPresenterId) {
+          this.currentPresenterId = null;
+          this.currentPresenterName = null;
+          if (this.onPresenterChange) {
+            this.onPresenterChange(null, null);
+          }
+          if (this.onRemoteStream) {
+            this.onRemoteStream(null);
+          }
+        }
         break;
 
       case "request_offer":
-        // Viewer offer istiyor
-        if (this.isHost && this.isScreenSharing) {
+        // Birisi bizden offer istiyor (biz paylaşıyorsak)
+        if (this.isScreenSharing) {
           await this.createOfferForUser(data.from);
         }
         break;
 
       case "offer":
-        // Viewer olarak offer aldık
-        if (!this.isHost) {
+        // Birisi bize offer gönderiyor (biz izliyoruz)
+        if (!this.isScreenSharing) {
           await this.handleOffer(data.from, data.sdp);
         }
         break;
@@ -173,14 +192,26 @@ class WebRTCManager {
         break;
 
       case "screen_share_started":
-        // Host ekran paylaşımı başlattı, offer iste
-        if (!this.isHost) {
+        // Birisi ekran paylaşımı başlattı
+        this.currentPresenterId = data.presenter_id;
+        this.currentPresenterName = data.presenter_name;
+        if (this.onPresenterChange) {
+          this.onPresenterChange(data.presenter_id, data.presenter_name);
+        }
+        // Presenter'dan offer iste
+        if (!this.isScreenSharing) {
           this.send({ type: "request_offer" });
         }
         break;
 
       case "screen_share_stopped":
-        if (!this.isHost && this.onRemoteStream) {
+        // Paylaşım durduruldu
+        this.currentPresenterId = null;
+        this.currentPresenterName = null;
+        if (this.onPresenterChange) {
+          this.onPresenterChange(null, null);
+        }
+        if (this.onRemoteStream) {
           this.onRemoteStream(null);
         }
         break;
@@ -231,6 +262,11 @@ class WebRTCManager {
   }
 
   async startScreenShare() {
+    // Başka biri paylaşıyorsa engelle
+    if (this.currentPresenterId && !this.isScreenSharing) {
+      throw new Error("Başka biri ekran paylaşıyor. Lütfen bekleyin.");
+    }
+
     try {
       // Ekran paylaşımı + sistem sesi (tab audio)
       this.localStream = await navigator.mediaDevices.getDisplayMedia({
@@ -254,7 +290,7 @@ class WebRTCManager {
       this.isMuted = false; // Sistem sesi varsa mute değil
       this.send({ type: "screen_share_started" });
 
-      // Mevcut viewer'lara offer gönder
+      // Mevcut kullanıcılara offer gönder
       for (const [userId] of this.peerConnections) {
         await this.createOfferForUser(userId);
       }
@@ -482,6 +518,19 @@ class WebRTCManager {
       pc.close();
       this.viewerAudioConnections.delete(userId);
     }
+  }
+
+  // Başka biri paylaşıyor mu kontrol et
+  canShare() {
+    return !this.currentPresenterId || this.isScreenSharing;
+  }
+
+  // Şu anki presenter bilgisi
+  getCurrentPresenter() {
+    return {
+      id: this.currentPresenterId,
+      name: this.currentPresenterName,
+    };
   }
 
   sendChatMessage(message) {

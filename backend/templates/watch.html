@@ -80,7 +80,37 @@ endblock %} {% block content %}
 
         <!-- Waiting State -->
         <div
-          x-show="!hasRemoteStream"
+          x-show="!hasRemoteStream && !currentPresenterId"
+          class="absolute inset-0 flex flex-col items-center justify-center bg-surface-dark"
+        >
+          <div class="text-center">
+            <div
+              class="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-4"
+            >
+              <span class="material-symbols-outlined text-4xl text-primary"
+                >present_to_all</span
+              >
+            </div>
+            <p class="text-white font-medium mb-2">Ekran Paylaşımı Başlat</p>
+            <p class="text-text-secondary text-sm mb-4">
+              Ekranınızı paylaşmak için butona tıklayın veya başkasının
+              paylaşmasını bekleyin
+            </p>
+            <button
+              @click="startScreenShare()"
+              class="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition-all"
+            >
+              <span class="material-symbols-outlined align-middle mr-1"
+                >screen_share</span
+              >
+              Ekran Paylaş
+            </button>
+          </div>
+        </div>
+
+        <!-- Waiting for presenter stream -->
+        <div
+          x-show="!hasRemoteStream && currentPresenterId && !isScreenSharing"
           class="absolute inset-0 flex flex-col items-center justify-center bg-surface-dark"
         >
           <div class="text-center">
@@ -92,9 +122,9 @@ endblock %} {% block content %}
                 >live_tv</span
               >
             </div>
-            <p class="text-white font-medium mb-2">Yayın Bekleniyor</p>
+            <p class="text-white font-medium mb-2">Bağlanıyor...</p>
             <p class="text-text-secondary text-sm">
-              Host ekran paylaşımını başlattığında yayın burada görünecek
+              <span x-text="currentPresenterName"></span> ekran paylaşıyor
             </p>
           </div>
         </div>
@@ -132,6 +162,23 @@ endblock %} {% block content %}
 
       <!-- Controls -->
       <div class="flex items-center justify-center gap-3">
+        <!-- Ekran Paylaş Toggle -->
+        <button
+          @click="isScreenSharing ? stopScreenShare() : startScreenShare()"
+          :disabled="!canShare() && !isScreenSharing"
+          :class="isScreenSharing ? 'bg-red-500 hover:bg-red-600' : (canShare() ? 'bg-primary hover:bg-primary/90' : 'bg-surface-dark text-slate-500 cursor-not-allowed')"
+          class="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white transition-all"
+        >
+          <span
+            class="material-symbols-outlined"
+            x-text="isScreenSharing ? 'stop_screen_share' : 'screen_share'"
+          ></span>
+          <span
+            class="text-sm font-medium"
+            x-text="isScreenSharing ? 'Paylaşımı Durdur' : (canShare() ? 'Ekran Paylaş' : currentPresenterName + ' paylaşıyor')"
+          ></span>
+        </button>
+
         <!-- Mikrofon Toggle -->
         <button
           @click="toggleMicrophone()"
@@ -302,6 +349,9 @@ endblock %} {% block content %}
       isConnected: false,
       hasRemoteStream: false,
       isMicEnabled: false,
+      isScreenSharing: false,
+      currentPresenterId: null,
+      currentPresenterName: null,
       volume: 100,
 
       participants: [],
@@ -312,6 +362,8 @@ endblock %} {% block content %}
       peerConnection: null,
       audioPeerConnection: null,
       localAudioStream: null,
+      localScreenStream: null,
+      screenPeerConnections: new Map(),
 
       iceConfig: {
         iceServers: [
@@ -427,8 +479,29 @@ endblock %} {% block content %}
             break;
 
           case "user_joined":
+            this.participants = data.participants;
+            // Eğer biz paylaşıyorsak yeni kullanıcıya offer gönder
+            if (this.isScreenSharing && this.localScreenStream) {
+              await this.createScreenOfferForUser(data.user_id);
+            }
+            break;
+
           case "user_left":
             this.participants = data.participants;
+            // Ayrılan kişi presenter ise temizle
+            if (data.user_id === this.currentPresenterId) {
+              this.currentPresenterId = null;
+              this.currentPresenterName = null;
+              this.hasRemoteStream = false;
+              if (this.$refs.remoteVideo) {
+                this.$refs.remoteVideo.srcObject = null;
+              }
+            }
+            // Screen peer connection'ı temizle
+            if (this.screenPeerConnections.has(data.user_id)) {
+              this.screenPeerConnections.get(data.user_id).close();
+              this.screenPeerConnections.delete(data.user_id);
+            }
             break;
 
           case "offer":
@@ -440,13 +513,39 @@ endblock %} {% block content %}
             break;
 
           case "screen_share_started":
-            this.send({ type: "request_offer" });
+            this.currentPresenterId = data.presenter_id;
+            this.currentPresenterName = data.presenter_name;
+            if (!this.isScreenSharing) {
+              this.send({ type: "request_offer" });
+            }
             break;
 
           case "screen_share_stopped":
+            this.currentPresenterId = null;
+            this.currentPresenterName = null;
             this.hasRemoteStream = false;
             if (this.$refs.remoteVideo) {
               this.$refs.remoteVideo.srcObject = null;
+            }
+            break;
+
+          case "request_offer":
+            // Birisi bizden offer istiyor (biz paylaşıyorsak)
+            if (this.isScreenSharing && this.localScreenStream) {
+              await this.createScreenOfferForUser(data.from);
+            }
+            break;
+
+          case "answer":
+            // Birisi bizim offer'ımıza answer verdi
+            if (this.isScreenSharing) {
+              const pc = this.screenPeerConnections.get(data.from);
+              if (pc) {
+                await pc.setRemoteDescription(
+                  new RTCSessionDescription(data.sdp)
+                );
+                console.log("Screen answer received from", data.from);
+              }
             }
             break;
 
@@ -535,6 +634,108 @@ endblock %} {% block content %}
             console.warn("Audio ICE candidate error:", e);
           }
         }
+      },
+
+      // Ekran paylaşabilir miyim?
+      canShare() {
+        return !this.currentPresenterId || this.isScreenSharing;
+      },
+
+      async startScreenShare() {
+        if (this.currentPresenterId && !this.isScreenSharing) {
+          alert(
+            this.currentPresenterName +
+              " şu an ekran paylaşıyor. Lütfen bekleyin."
+          );
+          return;
+        }
+
+        try {
+          this.localScreenStream = await navigator.mediaDevices.getDisplayMedia(
+            {
+              video: { cursor: "always" },
+              audio: true,
+            }
+          );
+
+          this.localScreenStream.getVideoTracks()[0].onended = () => {
+            this.stopScreenShare();
+          };
+
+          this.isScreenSharing = true;
+          this.currentPresenterId = "me";
+          this.currentPresenterName = this.guestName;
+
+          // Kendi ekranımı göster
+          if (this.$refs.remoteVideo) {
+            this.$refs.remoteVideo.srcObject = this.localScreenStream;
+            this.hasRemoteStream = true;
+          }
+
+          this.send({ type: "screen_share_started" });
+
+          console.log("Ekran paylaşımı başlatıldı");
+        } catch (e) {
+          console.error("Ekran paylaşım hatası:", e);
+          if (e.name !== "NotAllowedError") {
+            alert("Ekran paylaşımı başlatılamadı");
+          }
+        }
+      },
+
+      stopScreenShare() {
+        if (this.localScreenStream) {
+          this.localScreenStream.getTracks().forEach((t) => t.stop());
+          this.localScreenStream = null;
+        }
+
+        this.screenPeerConnections.forEach((pc) => pc.close());
+        this.screenPeerConnections.clear();
+
+        this.isScreenSharing = false;
+        this.currentPresenterId = null;
+        this.currentPresenterName = null;
+        this.hasRemoteStream = false;
+
+        if (this.$refs.remoteVideo) {
+          this.$refs.remoteVideo.srcObject = null;
+        }
+
+        this.send({ type: "screen_share_stopped" });
+        console.log("Ekran paylaşımı durduruldu");
+      },
+
+      async createScreenOfferForUser(userId) {
+        if (!this.localScreenStream) return;
+
+        const pc = new RTCPeerConnection(this.iceConfig);
+
+        this.localScreenStream.getTracks().forEach((track) => {
+          pc.addTrack(track, this.localScreenStream);
+        });
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            this.send({
+              type: "ice_candidate",
+              target: userId,
+              candidate: event.candidate,
+            });
+          }
+        };
+
+        this.screenPeerConnections.set(userId, pc);
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        this.send({
+          type: "offer",
+          target: userId,
+          sdp: pc.localDescription,
+        });
+
+        console.log("Screen offer sent to", userId);
       },
 
       async toggleMicrophone() {

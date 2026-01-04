@@ -222,20 +222,19 @@ async def websocket_room(
                     })
                 
                 elif msg_type == "screen_share_started":
-                    # Host ekran paylaşımı başlattı
-                    if is_host:
-                        await manager.broadcast_to_room(room_id, {
-                            "type": "screen_share_started",
-                            "host_id": user_id
-                        }, exclude_user=user_id)
+                    # Biri ekran paylaşımı başlattı
+                    await manager.broadcast_to_room(room_id, {
+                        "type": "screen_share_started",
+                        "presenter_id": user_id,
+                        "presenter_name": username
+                    }, exclude_user=user_id)
                 
                 elif msg_type == "screen_share_stopped":
-                    # Host ekran paylaşımı durdurdu
-                    if is_host:
-                        await manager.broadcast_to_room(room_id, {
-                            "type": "screen_share_stopped",
-                            "host_id": user_id
-                        }, exclude_user=user_id)
+                    # Paylaşım durduruldu
+                    await manager.broadcast_to_room(room_id, {
+                        "type": "screen_share_stopped",
+                        "presenter_id": user_id
+                    }, exclude_user=user_id)
                 
                 elif msg_type == "viewer_audio_offer":
                     # Viewer (guest) mikrofon açtı, host'a offer gönder

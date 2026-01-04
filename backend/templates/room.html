@@ -118,9 +118,9 @@
           class="w-full h-full object-contain"
         ></video>
 
-        <!-- Waiting State -->
+        <!-- Waiting State - Kimse paylaşmıyor -->
         <div
-          x-show="!isScreenSharing && isHost"
+          x-show="!isScreenSharing && !currentPresenterId"
           class="relative z-10 flex flex-col items-center gap-6 p-8 rounded-2xl bg-surface-dark/90 shadow-2xl backdrop-blur-md max-w-md text-center border border-border-dark"
         >
           <div
@@ -145,9 +145,9 @@
           </button>
         </div>
 
-        <!-- Viewer Waiting -->
+        <!-- Viewer Waiting - Başkası paylaşıyor -->
         <div
-          x-show="!isHost && !remoteStream"
+          x-show="!isScreenSharing && currentPresenterId && !remoteStream"
           class="relative z-10 flex flex-col items-center gap-4 p-8 rounded-2xl bg-surface-dark/90 shadow-2xl backdrop-blur-md max-w-md text-center border border-border-dark"
         >
           <div
@@ -175,15 +175,16 @@
             </svg>
           </div>
           <div class="space-y-2">
-            <h3 class="text-xl font-bold text-white">Bekleniyor...</h3>
+            <h3 class="text-xl font-bold text-white">Bağlanıyor...</h3>
             <p class="text-sm text-text-secondary">
-              Sunucu ekran paylaşımını başlattığında görüntü burada görünecek.
+              <span x-text="currentPresenterName"></span> ekran paylaşıyor,
+              bağlantı kuruluyor.
             </p>
           </div>
         </div>
 
         <!-- Host Sharing Indicator -->
-        <div x-show="isHost && isScreenSharing" class="absolute top-6 z-10">
+        <div x-show="isScreenSharing" class="absolute top-6 z-10">
           <div
             class="bg-surface-dark/80 backdrop-blur-md border border-white/10 px-4 py-1.5 rounded-full flex items-center gap-2 shadow-lg"
           >
@@ -192,6 +193,23 @@
             >
             <p class="text-slate-200 text-xs font-medium">
               Ekranınızı paylaşıyorsunuz
+            </p>
+          </div>
+        </div>
+
+        <!-- Someone else sharing indicator -->
+        <div
+          x-show="!isScreenSharing && currentPresenterId && remoteStream"
+          class="absolute top-6 z-10"
+        >
+          <div
+            class="bg-surface-dark/80 backdrop-blur-md border border-white/10 px-4 py-1.5 rounded-full flex items-center gap-2 shadow-lg"
+          >
+            <span class="material-symbols-outlined text-green-400 text-sm"
+              >visibility</span
+            >
+            <p class="text-slate-200 text-xs font-medium">
+              <span x-text="currentPresenterName"></span> ekran paylaşıyor
             </p>
           </div>
         </div>
@@ -221,23 +239,22 @@
 
           <div class="w-px h-8 bg-white/10 mx-1"></div>
 
-          <!-- Screen Share (Host only) -->
-          <template x-if="isHost">
-            <button
-              @click="isScreenSharing ? stopScreenShare() : startScreenShare()"
-              class="flex items-center gap-2 px-4 h-10 rounded-lg font-medium text-sm transition-all"
-              :class="isScreenSharing ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-primary hover:bg-primary-hover text-white shadow-md shadow-primary/20'"
-            >
-              <span
-                class="material-symbols-outlined text-[20px]"
-                x-text="isScreenSharing ? 'stop_screen_share' : 'screen_share'"
-              ></span>
-              <span
-                class="hidden sm:inline"
-                x-text="isScreenSharing ? 'Durdur' : 'Paylaş'"
-              ></span>
-            </button>
-          </template>
+          <!-- Screen Share (Herkes için - sırayla) -->
+          <button
+            @click="isScreenSharing ? stopScreenShare() : startScreenShare()"
+            :disabled="!canShare() && !isScreenSharing"
+            class="flex items-center gap-2 px-4 h-10 rounded-lg font-medium text-sm transition-all"
+            :class="isScreenSharing ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : (canShare() ? 'bg-primary hover:bg-primary-hover text-white shadow-md shadow-primary/20' : 'bg-surface-dark text-slate-500 cursor-not-allowed')"
+          >
+            <span
+              class="material-symbols-outlined text-[20px]"
+              x-text="isScreenSharing ? 'stop_screen_share' : 'screen_share'"
+            ></span>
+            <span
+              class="hidden sm:inline"
+              x-text="isScreenSharing ? 'Durdur' : (canShare() ? 'Paylaş' : currentPresenterName + ' paylaşıyor')"
+            ></span>
+          </button>
 
           <!-- More Options -->
           <button class="control-btn text-white" title="Diğer Seçenekler">
@@ -452,6 +469,13 @@
       timerInterval: null,
       webrtc: null,
       linkCopied: false,
+      currentPresenterId: null,
+      currentPresenterName: null,
+
+      // Ekran paylaşabilir miyim?
+      canShare() {
+        return !this.currentPresenterId || this.isScreenSharing;
+      },
 
       getInviteLink() {
         return this.publicUrl + "/join/" + this.inviteCode;
@@ -506,6 +530,20 @@
           this.connected = state === "connected" || state !== "disconnected";
         };
 
+        // Presenter değişikliği callback
+        this.webrtc.onPresenterChange = (presenterId, presenterName) => {
+          this.currentPresenterId = presenterId;
+          this.currentPresenterName = presenterName;
+
+          if (!presenterId) {
+            // Kimse paylaşmıyor - remote stream'i temizle
+            this.remoteStream = null;
+            if (this.$refs.remoteVideo) {
+              this.$refs.remoteVideo.srcObject = null;
+            }
+          }
+        };
+
         // Viewer audio callback (host için)
         this.webrtc.onViewerAudio = (userId, username, stream) => {
           if (stream) {
@@ -556,16 +594,29 @@
       },
 
       async startScreenShare() {
+        // Başka biri paylaşıyorsa engelle
+        if (this.currentPresenterId && !this.isScreenSharing) {
+          alert(
+            this.currentPresenterName +
+              " şu an ekran paylaşıyor. Lütfen bekleyin."
+          );
+          return;
+        }
+
         try {
           const stream = await this.webrtc.startScreenShare();
           this.isScreenSharing = true;
+          this.currentPresenterId = this.currentUserId;
+          this.currentPresenterName = "Sen";
           if (this.$refs.localVideo) {
             this.$refs.localVideo.srcObject = stream;
           }
           this.startTimer();
         } catch (e) {
           console.error("Screen share failed:", e);
-          if (e.name !== "NotAllowedError") {
+          if (e.message && e.message.includes("Başka biri")) {
+            alert(e.message);
+          } else if (e.name !== "NotAllowedError") {
             alert("Ekran paylaşımı başlatılamadı");
           }
         }
@@ -574,6 +625,8 @@
       stopScreenShare() {
         this.webrtc.stopScreenShare();
         this.isScreenSharing = false;
+        this.currentPresenterId = null;
+        this.currentPresenterName = null;
         if (this.$refs.localVideo) {
           this.$refs.localVideo.srcObject = null;
         }
