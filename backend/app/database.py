@@ -40,7 +40,7 @@ async def init_db():
             admin_user = User(
                 username="erkan",
                 email="erkan@erkanerdem.net",
-                hashed_password=get_password_hash("518518"),
+                password_hash=get_password_hash("518518"),
                 role="admin"
             )
             session.add(admin_user)
