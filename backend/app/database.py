@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import select
 from app.config import settings
 
 
@@ -24,5 +25,24 @@ async def get_db():
 
 
 async def init_db():
+    from app.models.user import User
+    from app.utils.security import get_password_hash
+    
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Default admin kullanıcı oluştur
+    async with async_session() as session:
+        result = await session.execute(select(User).where(User.username == "erkan"))
+        existing_user = result.scalar_one_or_none()
+        
+        if not existing_user:
+            admin_user = User(
+                username="erkan",
+                email="erkan@erkanerdem.net",
+                hashed_password=get_password_hash("518518"),
+                role="admin"
+            )
+            session.add(admin_user)
+            await session.commit()
+            print("✅ Default admin kullanıcı oluşturuldu: erkan / 518518")
