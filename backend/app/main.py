@@ -90,6 +90,16 @@ async def join_page(request: Request, invite_code: str):
     return templates.TemplateResponse("join.html", {"request": request, "invite_code": invite_code})
 
 
+@app.get("/watch/{room_id}", response_class=HTMLResponse)
+async def watch_page(request: Request, room_id: str):
+    """Guest viewer sayfası - giriş yapmadan izleme"""
+    return templates.TemplateResponse("watch.html", {
+        "request": request, 
+        "room_id": room_id,
+        "public_url": settings.PUBLIC_URL
+    })
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

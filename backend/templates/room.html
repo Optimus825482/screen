@@ -506,6 +506,27 @@
           this.connected = state === "connected" || state !== "disconnected";
         };
 
+        // Viewer audio callback (host için)
+        this.webrtc.onViewerAudio = (userId, username, stream) => {
+          if (stream) {
+            // Viewer'dan gelen sesi çal
+            const audio = new Audio();
+            audio.srcObject = stream;
+            audio.autoplay = true;
+            audio.id = "viewer-audio-" + userId;
+            document.body.appendChild(audio);
+            console.log(`${username} mikrofon açtı`);
+          } else {
+            // Viewer mikrofonu kapattı
+            const audio = document.getElementById("viewer-audio-" + userId);
+            if (audio) {
+              audio.srcObject = null;
+              audio.remove();
+            }
+            console.log(`${username} mikrofon kapattı`);
+          }
+        };
+
         // Connect WebSocket
         try {
           await this.webrtc.connect();

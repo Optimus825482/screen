@@ -1,11 +1,12 @@
 import json
 from uuid import UUID
-from typing import Dict, Set
+from typing import Dict, Set, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db, async_session
 from app.services.auth_service import AuthService
 from app.services.room_service import RoomService
+from app.routers.rooms import get_guest_session, remove_guest_session
 
 router = APIRouter(tags=["WebSocket"])
 
@@ -18,13 +19,20 @@ class ConnectionManager:
         self.rooms: Dict[str, Dict[str, WebSocket]] = {}
         # user_id -> username
         self.usernames: Dict[str, str] = {}
+        # user_id -> is_guest
+        self.guests: Dict[str, bool] = {}
+        # user_id -> guest_token (for cleanup)
+        self.guest_tokens: Dict[str, str] = {}
     
-    async def connect(self, websocket: WebSocket, room_id: str, user_id: str, username: str):
+    async def connect(self, websocket: WebSocket, room_id: str, user_id: str, username: str, is_guest: bool = False, guest_token: str = None):
         await websocket.accept()
         if room_id not in self.rooms:
             self.rooms[room_id] = {}
         self.rooms[room_id][user_id] = websocket
         self.usernames[user_id] = username
+        self.guests[user_id] = is_guest
+        if guest_token:
+            self.guest_tokens[user_id] = guest_token
     
     def disconnect(self, room_id: str, user_id: str):
         if room_id in self.rooms and user_id in self.rooms[room_id]:
@@ -33,6 +41,12 @@ class ConnectionManager:
                 del self.rooms[room_id]
         if user_id in self.usernames:
             del self.usernames[user_id]
+        if user_id in self.guests:
+            del self.guests[user_id]
+        # Guest token cleanup
+        if user_id in self.guest_tokens:
+            remove_guest_session(self.guest_tokens[user_id])
+            del self.guest_tokens[user_id]
     
     async def send_personal(self, message: dict, websocket: WebSocket):
         await websocket.send_json(message)
@@ -58,7 +72,11 @@ class ConnectionManager:
         if room_id not in self.rooms:
             return []
         return [
-            {"user_id": uid, "username": self.usernames.get(uid, "Unknown")}
+            {
+                "user_id": uid, 
+                "username": self.usernames.get(uid, "Unknown"),
+                "is_guest": self.guests.get(uid, False)
+            }
             for uid in self.rooms[room_id].keys()
         ]
 
@@ -70,18 +88,38 @@ manager = ConnectionManager()
 async def websocket_room(
     websocket: WebSocket,
     room_id: str,
-    token: str = Query(...)
+    token: str = Query(None),
+    guest_token: str = Query(None)
 ):
     """
     WebSocket endpoint for room communication.
     Handles: WebRTC signaling, chat messages, presence updates
+    Supports both authenticated users (token) and guests (guest_token)
     """
     async with async_session() as db:
-        # Token doğrulama
-        auth_service = AuthService(db)
-        user = await auth_service.get_user_from_token(token)
+        user = None
+        user_id = None
+        username = None
+        is_host = False
+        is_guest = False
         
-        if not user:
+        # Token doğrulama - önce normal token, sonra guest token
+        if token:
+            auth_service = AuthService(db)
+            user = await auth_service.get_user_from_token(token)
+            if user:
+                user_id = str(user.id)
+                username = user.username
+        
+        if not user and guest_token:
+            # Guest token kontrolü
+            guest_session = get_guest_session(guest_token)
+            if guest_session and guest_session.get("room_id") == room_id:
+                is_guest = True
+                user_id = f"guest_{guest_token[:16]}"
+                username = guest_session.get("guest_name", "Misafir")
+        
+        if not user_id:
             await websocket.close(code=4001, reason="Unauthorized")
             return
         
@@ -93,12 +131,11 @@ async def websocket_room(
             await websocket.close(code=4004, reason="Room not found or ended")
             return
         
-        user_id = str(user.id)
-        username = user.username
-        is_host = str(room.host_id) == user_id
+        if not is_guest:
+            is_host = str(room.host_id) == user_id
         
         # Bağlantıyı kabul et
-        await manager.connect(websocket, room_id, user_id, username)
+        await manager.connect(websocket, room_id, user_id, username, is_guest, guest_token if is_guest else None)
         
         # Odadaki diğer kullanıcılara bildir
         await manager.broadcast_to_room(room_id, {
@@ -106,6 +143,7 @@ async def websocket_room(
             "user_id": user_id,
             "username": username,
             "is_host": is_host,
+            "is_guest": is_guest,
             "participants": manager.get_room_users(room_id)
         }, exclude_user=user_id)
         
@@ -116,6 +154,7 @@ async def websocket_room(
             "room_name": room.name,
             "host_id": str(room.host_id),
             "is_host": is_host,
+            "is_guest": is_guest,
             "participants": manager.get_room_users(room_id)
         }, websocket)
         
@@ -188,6 +227,37 @@ async def websocket_room(
                             "type": "screen_share_stopped",
                             "host_id": user_id
                         }, exclude_user=user_id)
+                
+                elif msg_type == "viewer_audio_offer":
+                    # Viewer (guest) mikrofon açtı, host'a offer gönder
+                    if is_guest or not is_host:
+                        host_id = str(room.host_id)
+                        await manager.send_to_user(room_id, host_id, {
+                            "type": "viewer_audio_offer",
+                            "from": user_id,
+                            "username": username,
+                            "sdp": data.get("sdp")
+                        })
+                
+                elif msg_type == "viewer_audio_answer":
+                    # Host, viewer'ın audio offer'ına answer veriyor
+                    if is_host:
+                        target = data.get("target")
+                        if target:
+                            await manager.send_to_user(room_id, target, {
+                                "type": "viewer_audio_answer",
+                                "from": user_id,
+                                "sdp": data.get("sdp")
+                            })
+                
+                elif msg_type == "viewer_audio_stopped":
+                    # Viewer mikrofonu kapattı
+                    host_id = str(room.host_id)
+                    await manager.send_to_user(room_id, host_id, {
+                        "type": "viewer_audio_stopped",
+                        "from": user_id,
+                        "username": username
+                    })
                 
                 elif msg_type == "kick_user":
                     # Host bir kullanıcıyı çıkarıyor

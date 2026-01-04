@@ -1,14 +1,22 @@
 from uuid import UUID
+import secrets
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.services.room_service import RoomService
-from app.schemas.room import RoomCreate, RoomResponse, RoomDetailResponse, ParticipantResponse
+from app.schemas.room import (
+    RoomCreate, RoomResponse, RoomDetailResponse, ParticipantResponse,
+    GuestJoinRequest, GuestJoinResponse, GuestRoomCheck
+)
 from app.routers.auth import get_current_user
 from app.models.user import User
 from app.config import settings
 
 router = APIRouter(prefix="/api/rooms", tags=["Rooms"])
+
+# Guest token'ları bellekte tut (production'da Redis kullanılmalı)
+# guest_token -> {room_id, guest_name, created_at}
+guest_sessions: dict = {}
 
 
 @router.get("/ice-config")
@@ -219,3 +227,93 @@ async def kick_user(
     
     if not success:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bu işlemi yapma yetkiniz yok")
+
+
+# ==================== GUEST ENDPOINTS ====================
+
+@router.get("/guest/check/{invite_code}", response_model=GuestRoomCheck)
+async def check_room_for_guest(
+    invite_code: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Misafir için oda durumunu kontrol et"""
+    room_service = RoomService(db)
+    room = await room_service.get_room_by_invite_code(invite_code)
+    
+    if not room:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Yayın bulunamadı")
+    
+    if room.status != "active":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Bu yayın sona ermiş")
+    
+    # Host bilgisini al
+    from sqlalchemy import select
+    from app.models.user import User
+    result = await db.execute(select(User).where(User.id == room.host_id))
+    host = result.scalar_one_or_none()
+    
+    # Mevcut izleyici sayısı
+    participants = await room_service.get_active_participants(room.id)
+    viewer_count = len([p for p in participants if p.role == "viewer"])
+    
+    return GuestRoomCheck(
+        name=room.name,
+        status=room.status,
+        host_name=host.username if host else "Bilinmiyor",
+        current_viewers=viewer_count,
+        max_viewers=room.max_viewers
+    )
+
+
+@router.post("/guest/join/{invite_code}", response_model=GuestJoinResponse)
+async def join_as_guest(
+    invite_code: str,
+    data: GuestJoinRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Misafir olarak yayına katıl"""
+    room_service = RoomService(db)
+    room = await room_service.get_room_by_invite_code(invite_code)
+    
+    if not room:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Yayın bulunamadı")
+    
+    if room.status != "active":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Bu yayın sona ermiş")
+    
+    # Kapasite kontrolü
+    participants = await room_service.get_active_participants(room.id)
+    viewer_count = len([p for p in participants if p.role == "viewer"])
+    
+    # Guest'leri de say (bellekteki)
+    guest_count = sum(1 for g in guest_sessions.values() if str(g.get("room_id")) == str(room.id))
+    total_viewers = viewer_count + guest_count
+    
+    if total_viewers >= room.max_viewers:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Yayın dolu")
+    
+    # Guest token oluştur
+    guest_token = secrets.token_urlsafe(32)
+    guest_sessions[guest_token] = {
+        "room_id": str(room.id),
+        "guest_name": data.guest_name,
+        "created_at": __import__("datetime").datetime.utcnow().isoformat()
+    }
+    
+    return GuestJoinResponse(
+        guest_token=guest_token,
+        room_id=room.id,
+        room_name=room.name,
+        guest_name=data.guest_name
+    )
+
+
+def get_guest_session(token: str) -> dict | None:
+    """Guest token'dan session bilgisi al"""
+    return guest_sessions.get(token)
+
+
+def remove_guest_session(token: str):
+    """Guest session'ı sil"""
+    if token in guest_sessions:
+        del guest_sessions[token]

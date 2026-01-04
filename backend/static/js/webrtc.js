@@ -5,8 +5,10 @@ class WebRTCManager {
     this.isHost = isHost;
     this.localStream = null;
     this.peerConnections = new Map(); // userId -> RTCPeerConnection
+    this.viewerAudioConnections = new Map(); // userId -> RTCPeerConnection (viewer audio için)
     this.ws = null;
     this.onRemoteStream = null;
+    this.onViewerAudio = null; // Viewer'dan gelen ses için callback
     this.onParticipantUpdate = null;
     this.onChatMessage = null;
     this.onConnectionStateChange = null;
@@ -197,6 +199,23 @@ class WebRTCManager {
       case "room_ended":
         alert(data.reason);
         window.location.href = "/dashboard";
+        break;
+
+      case "viewer_audio_offer":
+        // Viewer mikrofon açtı, host olarak answer ver
+        if (this.isHost) {
+          await this.handleViewerAudioOffer(data.from, data.username, data.sdp);
+        }
+        break;
+
+      case "viewer_audio_stopped":
+        // Viewer mikrofonu kapattı
+        if (this.isHost) {
+          this.closeViewerAudioConnection(data.from);
+          if (this.onViewerAudio) {
+            this.onViewerAudio(data.from, data.username, null);
+          }
+        }
         break;
 
       case "pong":
@@ -396,6 +415,48 @@ class WebRTCManager {
     }
   }
 
+  // Viewer audio handling (host tarafı)
+  async handleViewerAudioOffer(fromUserId, username, sdp) {
+    const pc = new RTCPeerConnection(this.config);
+
+    pc.ontrack = (event) => {
+      console.log(`Viewer audio received from ${username}`);
+      if (this.onViewerAudio) {
+        this.onViewerAudio(fromUserId, username, event.streams[0]);
+      }
+    };
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.send({
+          type: "ice_candidate",
+          target: fromUserId,
+          candidate: event.candidate,
+        });
+      }
+    };
+
+    this.viewerAudioConnections.set(fromUserId, pc);
+
+    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    this.send({
+      type: "viewer_audio_answer",
+      target: fromUserId,
+      sdp: pc.localDescription,
+    });
+  }
+
+  closeViewerAudioConnection(userId) {
+    const pc = this.viewerAudioConnections.get(userId);
+    if (pc) {
+      pc.close();
+      this.viewerAudioConnections.delete(userId);
+    }
+  }
+
   sendChatMessage(message) {
     this.send({
       type: "chat",
@@ -418,6 +479,10 @@ class WebRTCManager {
 
     for (const [userId] of this.peerConnections) {
       this.closePeerConnection(userId);
+    }
+
+    for (const [userId] of this.viewerAudioConnections) {
+      this.closeViewerAudioConnection(userId);
     }
 
     if (this.ws) {

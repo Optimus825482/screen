@@ -8,6 +8,25 @@ class RoomCreate(BaseModel):
     max_viewers: int = Field(default=3, ge=1, le=10)
 
 
+class GuestJoinRequest(BaseModel):
+    guest_name: str = Field(..., min_length=2, max_length=30)
+
+
+class GuestJoinResponse(BaseModel):
+    guest_token: str
+    room_id: UUID
+    room_name: str
+    guest_name: str
+
+
+class GuestRoomCheck(BaseModel):
+    name: str
+    status: str
+    host_name: str
+    current_viewers: int
+    max_viewers: int
+
+
 class RoomResponse(BaseModel):
     id: UUID
     name: str

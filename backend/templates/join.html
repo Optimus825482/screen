@@ -35,14 +35,6 @@ endblock %} {% block content %}
           ScreenShare Pro
         </h2>
       </a>
-      <template x-if="!isAuthenticated">
-        <a
-          href="/login"
-          class="flex min-w-[84px] cursor-pointer items-center justify-center rounded-lg h-9 px-4 bg-surface-hover hover:bg-[#2f425a] text-white text-sm font-bold transition-colors"
-        >
-          Giriş Yap
-        </a>
-      </template>
     </div>
   </header>
 
@@ -74,12 +66,12 @@ endblock %} {% block content %}
           <h1
             class="text-white text-2xl md:text-3xl font-black leading-tight tracking-[-0.02em]"
           >
-            Toplantıya Katıl
+            Yayına Katıl
           </h1>
           <p
             class="text-text-secondary text-sm md:text-base max-w-[360px] mx-auto"
           >
-            Sunucu tarafından sağlanan toplantı davet kodunu girin.
+            Yayını izlemek için adınızı girin.
           </p>
         </div>
 
@@ -92,9 +84,9 @@ endblock %} {% block content %}
           <p class="text-sm text-red-400" x-text="error"></p>
         </div>
 
-        <!-- Room Info (if found) -->
+        <!-- Room Info -->
         <div
-          x-show="room"
+          x-show="roomInfo"
           x-transition
           class="bg-green-500/10 border border-green-500/20 rounded-lg p-4"
         >
@@ -102,23 +94,23 @@ endblock %} {% block content %}
             <div
               class="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center text-green-500"
             >
-              <span class="material-symbols-outlined">meeting_room</span>
+              <span class="material-symbols-outlined">live_tv</span>
             </div>
             <div>
-              <p class="font-medium text-white" x-text="room?.name"></p>
+              <p class="font-medium text-white" x-text="roomInfo?.name"></p>
               <p class="text-xs text-green-400">
-                Oda bulundu - Katılmaya hazır
+                Yayın aktif - Katılmaya hazır
               </p>
             </div>
           </div>
         </div>
 
-        <form @submit.prevent="joinRoom" class="flex flex-col gap-5">
+        <form @submit.prevent="joinAsGuest" class="flex flex-col gap-5">
           <div class="flex flex-col gap-1.5">
             <label
               class="text-xs font-semibold uppercase tracking-wider text-text-secondary ml-1"
-              for="invite-code"
-              >Davet Kodu</label
+              for="guest-name"
+              >Adınız</label
             >
             <div class="relative group">
               <div
@@ -126,87 +118,65 @@ endblock %} {% block content %}
               >
                 <span
                   class="material-symbols-outlined text-slate-500 group-focus-within:text-primary transition-colors"
-                  >keyboard</span
+                  >person</span
                 >
               </div>
               <input
-                x-model="inviteCode"
-                :value="inviteCode"
+                x-model="guestName"
                 type="text"
-                id="invite-code"
-                placeholder="Davet kodunu girin"
+                id="guest-name"
+                placeholder="Adınızı girin"
                 required
-                class="block w-full rounded-lg border-0 py-4 pl-12 pr-4 text-white bg-surface-hover ring-1 ring-inset ring-transparent placeholder:text-slate-500 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-lg shadow-sm transition-all text-center"
+                minlength="2"
+                maxlength="30"
+                class="block w-full rounded-lg border-0 py-4 pl-12 pr-4 text-white bg-surface-hover ring-1 ring-inset ring-transparent placeholder:text-slate-500 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-lg shadow-sm transition-all"
               />
             </div>
           </div>
 
-          <!-- Login Required Notice -->
-          <div
-            x-show="!isAuthenticated"
-            class="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3"
+          <button
+            type="submit"
+            :disabled="loading || !guestName.trim() || guestName.length < 2"
+            class="flex w-full cursor-pointer items-center justify-center rounded-lg h-12 md:h-14 px-5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-base font-bold transition-all shadow-lg shadow-primary/25"
           >
-            <p class="text-sm text-yellow-400">
-              <span
-                class="material-symbols-outlined text-[16px] align-middle mr-1"
-                >info</span
+            <span x-show="!loading" class="flex items-center gap-2">
+              <span class="material-symbols-outlined">play_arrow</span>
+              Yayını İzle
+            </span>
+            <span x-show="loading" class="flex items-center gap-2">
+              <svg
+                class="animate-spin h-5 w-5"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
               >
-              Odaya katılmak için giriş yapmanız gerekiyor.
-            </p>
-          </div>
-
-          <template x-if="isAuthenticated">
-            <button
-              type="submit"
-              :disabled="loading || !inviteCode"
-              class="flex w-full cursor-pointer items-center justify-center rounded-lg h-12 md:h-14 px-5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-base font-bold transition-all shadow-lg shadow-primary/25"
-            >
-              <span x-show="!loading">Odaya Katıl</span>
-              <span x-show="loading" class="flex items-center gap-2">
-                <svg
-                  class="animate-spin h-5 w-5"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    class="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    stroke-width="4"
-                  ></circle>
-                  <path
-                    class="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                Katılınıyor...
-              </span>
-            </button>
-          </template>
-
-          <template x-if="!isAuthenticated">
-            <a
-              href="/login"
-              class="flex w-full items-center justify-center rounded-lg h-12 md:h-14 px-5 bg-primary hover:bg-primary/90 text-white text-base font-bold transition-all shadow-lg shadow-primary/25"
-            >
-              Giriş Yap ve Katıl
-            </a>
-          </template>
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              Katılınıyor...
+            </span>
+          </button>
         </form>
       </div>
 
       <div class="bg-[#131b24] p-4 text-center border-t border-border-dark">
-        <a
-          class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-white transition-colors"
-          href="#"
-        >
-          <span class="material-symbols-outlined text-base">help</span>
-          <span>Katılmada sorun mu yaşıyorsunuz? Yardım alın.</span>
-        </a>
+        <p class="text-sm text-text-secondary">
+          <span class="material-symbols-outlined text-base align-middle mr-1"
+            >info</span
+          >
+          Giriş yapmadan misafir olarak izleyebilirsiniz.
+        </p>
       </div>
     </div>
   </main>
@@ -221,18 +191,6 @@ endblock %} {% block content %}
       <p class="text-slate-500 text-sm">
         © 2026 ScreenShare Pro. Tüm hakları saklıdır.
       </p>
-      <div class="flex flex-wrap items-center justify-center gap-6">
-        <a
-          class="text-slate-500 hover:text-primary text-sm transition-colors"
-          href="#"
-          >Gizlilik Politikası</a
-        >
-        <a
-          class="text-slate-500 hover:text-primary text-sm transition-colors"
-          href="#"
-          >Hizmet Şartları</a
-        >
-      </div>
     </div>
   </footer>
 </div>
@@ -241,32 +199,59 @@ endblock %} {% block content %}
   function joinPage() {
     return {
       inviteCode: "{{ invite_code }}",
-      isAuthenticated: false,
+      guestName: "",
       loading: false,
       error: "",
-      room: null,
+      roomInfo: null,
 
-      init() {
-        this.isAuthenticated = Auth.isAuthenticated();
+      async init() {
+        // Oda bilgisini al
+        await this.checkRoom();
       },
 
-      async joinRoom() {
-        if (!this.inviteCode.trim()) return;
+      async checkRoom() {
+        try {
+          const response = await fetch(
+            "/api/rooms/guest/check/" + this.inviteCode
+          );
+          if (response.ok) {
+            this.roomInfo = await response.json();
+          } else {
+            const data = await response.json();
+            this.error = data.detail || "Yayın bulunamadı veya sona ermiş";
+          }
+        } catch (e) {
+          this.error = "Bağlantı hatası";
+        }
+      },
+
+      async joinAsGuest() {
+        if (!this.guestName.trim() || this.guestName.length < 2) return;
 
         this.loading = true;
         this.error = "";
 
         try {
-          const response = await Auth.fetchWithAuth(
-            "/api/rooms/join/" + this.inviteCode.trim()
+          const response = await fetch(
+            "/api/rooms/guest/join/" + this.inviteCode,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ guest_name: this.guestName.trim() }),
+            }
           );
 
-          if (response && response.ok) {
-            const room = await response.json();
-            window.location.href = "/room/" + room.id;
-          } else if (response) {
+          if (response.ok) {
             const data = await response.json();
-            this.error = data.detail || "Odaya katılınamadı";
+            // Guest token'ı kaydet
+            sessionStorage.setItem("guest_token", data.guest_token);
+            sessionStorage.setItem("guest_name", this.guestName.trim());
+            sessionStorage.setItem("guest_room_id", data.room_id);
+            // Yayın sayfasına git
+            window.location.href = "/watch/" + data.room_id;
+          } else {
+            const data = await response.json();
+            this.error = data.detail || "Yayına katılınamadı";
           }
         } catch (e) {
           this.error = "Bir hata oluştu";
