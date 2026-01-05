@@ -270,6 +270,41 @@ async def websocket_room(
                         "username": username
                     })
                 
+                elif msg_type == "whiteboard_started":
+                    # Biri whiteboard açtı
+                    await manager.broadcast_to_room(room_id, {
+                        "type": "whiteboard_started",
+                        "user_id": user_id,
+                        "username": username
+                    }, exclude_user=user_id)
+                
+                elif msg_type == "whiteboard_stopped":
+                    # Whiteboard kapatıldı
+                    await manager.broadcast_to_room(room_id, {
+                        "type": "whiteboard_stopped",
+                        "user_id": user_id
+                    }, exclude_user=user_id)
+                
+                elif msg_type == "whiteboard_draw":
+                    # Whiteboard çizim verisi
+                    await manager.broadcast_to_room(room_id, {
+                        "type": "whiteboard_draw",
+                        "user_id": user_id,
+                        "fromX": data.get("fromX"),
+                        "fromY": data.get("fromY"),
+                        "toX": data.get("toX"),
+                        "toY": data.get("toY"),
+                        "color": data.get("color"),
+                        "size": data.get("size")
+                    }, exclude_user=user_id)
+                
+                elif msg_type == "whiteboard_clear":
+                    # Whiteboard temizlendi
+                    await manager.broadcast_to_room(room_id, {
+                        "type": "whiteboard_clear",
+                        "user_id": user_id
+                    }, exclude_user=user_id)
+                
                 elif msg_type == "kick_user":
                     # Host bir kullanıcıyı çıkarıyor
                     if is_host:

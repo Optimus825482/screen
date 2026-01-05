@@ -13,6 +13,10 @@ class WebRTCManager {
     this.onChatMessage = null;
     this.onConnectionStateChange = null;
     this.onPresenterChange = null; // Yeni: Presenter değiştiğinde callback
+    this.onWhiteboardDraw = null; // Whiteboard çizim callback
+    this.onWhiteboardClear = null; // Whiteboard temizleme callback
+    this.onWhiteboardStarted = null; // Whiteboard başladı callback
+    this.onWhiteboardStopped = null; // Whiteboard durdu callback
     this.isScreenSharing = false;
     this.isCameraSharing = false; // Kamera paylaşımı durumu
     this.currentFacingMode = "user"; // 'user' = ön kamera, 'environment' = arka kamera
@@ -228,6 +232,30 @@ class WebRTCManager {
       case "chat":
         if (this.onChatMessage) {
           this.onChatMessage(data);
+        }
+        break;
+
+      case "whiteboard_draw":
+        if (this.onWhiteboardDraw) {
+          this.onWhiteboardDraw(data);
+        }
+        break;
+
+      case "whiteboard_clear":
+        if (this.onWhiteboardClear) {
+          this.onWhiteboardClear();
+        }
+        break;
+
+      case "whiteboard_started":
+        if (this.onWhiteboardStarted) {
+          this.onWhiteboardStarted(data.user_id, data.username);
+        }
+        break;
+
+      case "whiteboard_stopped":
+        if (this.onWhiteboardStopped) {
+          this.onWhiteboardStopped();
         }
         break;
 
