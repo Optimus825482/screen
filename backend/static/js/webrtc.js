@@ -213,10 +213,17 @@ class WebRTCManager {
         break;
 
       case "screen_share_started":
-        // Birisi ekran paylaşımı başlattı
+        // Birisi ekran/kamera paylaşımı başlattı
         this.currentPresenterId = data.presenter_id;
         this.currentPresenterName = data.presenter_name;
         this.currentShareType = data.share_type || "screen";
+        console.log(
+          "Screen share started by:",
+          data.presenter_name,
+          "type:",
+          this.currentShareType
+        );
+
         if (this.onPresenterChange) {
           this.onPresenterChange(
             data.presenter_id,
@@ -226,12 +233,16 @@ class WebRTCManager {
         }
         // Presenter için peer connection oluştur (yoksa)
         if (!this.peerConnections.has(data.presenter_id)) {
+          console.log(
+            "Creating peer connection for presenter:",
+            data.presenter_id
+          );
           this.createPeerConnection(data.presenter_id);
         }
-        // Presenter'dan offer iste
+        // Presenter'dan offer iste (biz paylaşmıyorsak)
         if (!this.isScreenSharing && !this.isCameraSharing) {
           console.log("Requesting offer from presenter:", data.presenter_id);
-          this.send({ type: "request_offer" });
+          this.send({ type: "request_offer", target: data.presenter_id });
         }
         break;
 

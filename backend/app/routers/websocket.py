@@ -214,13 +214,22 @@ async def websocket_room(
                             })
                 
                 elif msg_type == "request_offer":
-                    # Viewer, host'tan offer istiyor
-                    host_id = str(room.host_id)
-                    await manager.send_to_user(room_id, host_id, {
-                        "type": "request_offer",
-                        "from": user_id,
-                        "username": username
-                    })
+                    # Viewer, presenter'dan offer istiyor
+                    # Target belirtilmişse ona, yoksa tüm odaya broadcast et
+                    target = data.get("target")
+                    if target:
+                        await manager.send_to_user(room_id, target, {
+                            "type": "request_offer",
+                            "from": user_id,
+                            "username": username
+                        })
+                    else:
+                        # Tüm odaya broadcast et (presenter kim olursa olsun)
+                        await manager.broadcast_to_room(room_id, {
+                            "type": "request_offer",
+                            "from": user_id,
+                            "username": username
+                        }, exclude_user=user_id)
                 
                 elif msg_type == "screen_share_started":
                     # Biri ekran/kamera paylaşımı başlattı
