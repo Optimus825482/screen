@@ -1040,10 +1040,23 @@
         this.webrtc = new WebRTCManager(this.roomId, this.isHost);
 
         this.webrtc.onParticipantUpdate = (participants, data) => {
+          const oldCount = this.participants.length;
           this.participants = participants;
           if (data.room_name) this.roomName = data.room_name;
           if (data.host_id) this.hostId = data.host_id;
           if (data.is_host !== undefined) this.isHost = data.is_host;
+
+          // Kullanıcı katıldı/ayrıldı ses bildirimi
+          if (this.soundEnabled && oldCount > 0) {
+            if (
+              data.type === "user_joined" &&
+              data.user_id !== this.currentUserId
+            ) {
+              this.playJoinSound();
+            } else if (data.type === "user_left") {
+              this.playLeaveSound();
+            }
+          }
         };
 
         this.webrtc.onRemoteStream = (stream) => {
@@ -1386,6 +1399,82 @@
           oscillator.stop(this.audioContext.currentTime + 0.3);
         } catch (e) {
           console.warn("Could not play notification sound");
+        }
+      },
+
+      // Kullanıcı katıldı sesi (yükselen iki nota)
+      playJoinSound() {
+        if (!this.audioContext) return;
+        try {
+          // İlk nota
+          const osc1 = this.audioContext.createOscillator();
+          const gain1 = this.audioContext.createGain();
+          osc1.connect(gain1);
+          gain1.connect(this.audioContext.destination);
+          osc1.frequency.value = 523; // C5
+          osc1.type = "sine";
+          gain1.gain.setValueAtTime(0.25, this.audioContext.currentTime);
+          gain1.gain.exponentialRampToValueAtTime(
+            0.01,
+            this.audioContext.currentTime + 0.15
+          );
+          osc1.start(this.audioContext.currentTime);
+          osc1.stop(this.audioContext.currentTime + 0.15);
+
+          // İkinci nota (daha yüksek)
+          const osc2 = this.audioContext.createOscillator();
+          const gain2 = this.audioContext.createGain();
+          osc2.connect(gain2);
+          gain2.connect(this.audioContext.destination);
+          osc2.frequency.value = 659; // E5
+          osc2.type = "sine";
+          gain2.gain.setValueAtTime(0.25, this.audioContext.currentTime + 0.12);
+          gain2.gain.exponentialRampToValueAtTime(
+            0.01,
+            this.audioContext.currentTime + 0.35
+          );
+          osc2.start(this.audioContext.currentTime + 0.12);
+          osc2.stop(this.audioContext.currentTime + 0.35);
+        } catch (e) {
+          console.warn("Could not play join sound");
+        }
+      },
+
+      // Kullanıcı ayrıldı sesi (alçalan iki nota)
+      playLeaveSound() {
+        if (!this.audioContext) return;
+        try {
+          // İlk nota (yüksek)
+          const osc1 = this.audioContext.createOscillator();
+          const gain1 = this.audioContext.createGain();
+          osc1.connect(gain1);
+          gain1.connect(this.audioContext.destination);
+          osc1.frequency.value = 440; // A4
+          osc1.type = "sine";
+          gain1.gain.setValueAtTime(0.2, this.audioContext.currentTime);
+          gain1.gain.exponentialRampToValueAtTime(
+            0.01,
+            this.audioContext.currentTime + 0.15
+          );
+          osc1.start(this.audioContext.currentTime);
+          osc1.stop(this.audioContext.currentTime + 0.15);
+
+          // İkinci nota (daha alçak)
+          const osc2 = this.audioContext.createOscillator();
+          const gain2 = this.audioContext.createGain();
+          osc2.connect(gain2);
+          gain2.connect(this.audioContext.destination);
+          osc2.frequency.value = 330; // E4
+          osc2.type = "sine";
+          gain2.gain.setValueAtTime(0.2, this.audioContext.currentTime + 0.12);
+          gain2.gain.exponentialRampToValueAtTime(
+            0.01,
+            this.audioContext.currentTime + 0.35
+          );
+          osc2.start(this.audioContext.currentTime + 0.12);
+          osc2.stop(this.audioContext.currentTime + 0.35);
+        } catch (e) {
+          console.warn("Could not play leave sound");
         }
       },
 
