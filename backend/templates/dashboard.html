@@ -322,6 +322,9 @@ endblock %} {% block content %}
                           class="font-medium text-white truncate"
                           x-text="room.name"
                         ></div>
+                        <div class="text-xs text-slate-400 mt-0.5">
+                          <span x-text="room.host_name"></span>
+                        </div>
                         <div class="flex items-center gap-2 mt-1">
                           <code
                             class="text-xs bg-background-dark px-2 py-0.5 rounded text-slate-400"
@@ -382,6 +385,7 @@ endblock %} {% block content %}
                 >
                   <tr>
                     <th class="px-6 py-4 font-semibold">Oda Adı</th>
+                    <th class="px-6 py-4 font-semibold">Oluşturan</th>
                     <th class="px-6 py-4 font-semibold">Davet Kodu</th>
                     <th class="px-6 py-4 font-semibold">Durum</th>
                     <th class="px-6 py-4 font-semibold text-right">İşlemler</th>
@@ -410,6 +414,9 @@ endblock %} {% block content %}
                             ></div>
                           </div>
                         </div>
+                      </td>
+                      <td class="px-6 py-4">
+                        <span class="text-white" x-text="room.host_name"></span>
                       </td>
                       <td class="px-6 py-4">
                         <div class="flex items-center gap-2">
@@ -452,14 +459,14 @@ endblock %} {% block content %}
                   </template>
                   <tr x-show="filteredRooms.length === 0">
                     <td
-                      colspan="4"
+                      colspan="5"
                       class="px-6 py-12 text-center text-slate-500"
                     >
                       <span
                         class="material-symbols-outlined text-4xl mb-2 block"
                         >meeting_room</span
                       >
-                      Henüz oda oluşturmadınız
+                      Henüz oda yok
                     </td>
                   </tr>
                 </tbody>

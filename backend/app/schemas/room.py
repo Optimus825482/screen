@@ -32,6 +32,7 @@ class RoomResponse(BaseModel):
     name: str
     invite_code: str
     host_id: UUID
+    host_name: str = ""
     max_viewers: int
     status: str
     created_at: datetime

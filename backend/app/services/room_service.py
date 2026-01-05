@@ -50,9 +50,19 @@ class RoomService:
         return result.scalar_one_or_none()
     
     async def get_user_rooms(self, user_id: UUID) -> list[Room]:
+        """Kullanıcının oluşturduğu odaları getir"""
         result = await self.db.execute(
             select(Room)
             .where(Room.host_id == user_id)
+            .order_by(Room.created_at.desc())
+        )
+        return list(result.scalars().all())
+    
+    async def get_all_active_rooms(self) -> list[Room]:
+        """Tüm aktif odaları getir"""
+        result = await self.db.execute(
+            select(Room)
+            .where(Room.status == "active")
             .order_by(Room.created_at.desc())
         )
         return list(result.scalars().all())

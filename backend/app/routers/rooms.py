@@ -88,20 +88,41 @@ async def create_room(
 
 
 @router.get("", response_model=list[RoomResponse])
-async def get_my_rooms(
+async def get_rooms(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    """Tüm aktif odaları ve kullanıcının kendi odalarını getir"""
+    from sqlalchemy import select
+    
     room_service = RoomService(db)
-    rooms = await room_service.get_user_rooms(current_user.id)
+    
+    # Tüm aktif odaları al
+    active_rooms = await room_service.get_all_active_rooms()
+    
+    # Kullanıcının kendi bitmiş odalarını da al
+    user_rooms = await room_service.get_user_rooms(current_user.id)
+    
+    # Birleştir (aktif odalar + kullanıcının bitmiş odaları)
+    all_rooms = {str(r.id): r for r in active_rooms}
+    for room in user_rooms:
+        if str(room.id) not in all_rooms:
+            all_rooms[str(room.id)] = room
+    
+    # Host bilgilerini toplu al
+    host_ids = list(set(r.host_id for r in all_rooms.values()))
+    host_result = await db.execute(select(User).where(User.id.in_(host_ids)))
+    hosts = {str(h.id): h.username for h in host_result.scalars().all()}
+    
     result = []
-    for room in rooms:
+    for room in sorted(all_rooms.values(), key=lambda x: x.created_at, reverse=True):
         participants = await room_service.get_active_participants(room.id)
         result.append(RoomResponse(
             id=room.id,
             name=room.name,
             invite_code=room.invite_code,
             host_id=room.host_id,
+            host_name=hosts.get(str(room.host_id), "Bilinmiyor"),
             max_viewers=room.max_viewers,
             status=room.status,
             created_at=room.created_at,
