@@ -145,14 +145,27 @@ class WebRTCManager {
         this.myUserId = data.participants.find(
           (p) => p.username === data.room_name
         )?.user_id;
+        // Mevcut kullanıcılar için peer connection oluştur
+        for (const participant of data.participants) {
+          if (
+            participant.user_id !== this.myUserId &&
+            !this.peerConnections.has(participant.user_id)
+          ) {
+            this.createPeerConnection(participant.user_id);
+          }
+        }
         break;
 
       case "user_joined":
         if (this.onParticipantUpdate) {
           this.onParticipantUpdate(data.participants, data);
         }
+        // Yeni kullanıcı için peer connection oluştur
+        if (!this.peerConnections.has(data.user_id)) {
+          this.createPeerConnection(data.user_id);
+        }
         // Eğer biz paylaşıyorsak yeni kullanıcıya offer gönder
-        if (this.isScreenSharing) {
+        if (this.isScreenSharing || this.isCameraSharing) {
           await this.createOfferForUser(data.user_id);
         }
         break;
@@ -177,7 +190,8 @@ class WebRTCManager {
 
       case "request_offer":
         // Birisi bizden offer istiyor (biz paylaşıyorsak)
-        if (this.isScreenSharing) {
+        if (this.isScreenSharing || this.isCameraSharing) {
+          console.log("Received request_offer from:", data.from);
           await this.createOfferForUser(data.from);
         }
         break;
@@ -210,8 +224,13 @@ class WebRTCManager {
             this.currentShareType
           );
         }
+        // Presenter için peer connection oluştur (yoksa)
+        if (!this.peerConnections.has(data.presenter_id)) {
+          this.createPeerConnection(data.presenter_id);
+        }
         // Presenter'dan offer iste
         if (!this.isScreenSharing && !this.isCameraSharing) {
+          console.log("Requesting offer from presenter:", data.presenter_id);
           this.send({ type: "request_offer" });
         }
         break;
@@ -382,7 +401,9 @@ class WebRTCManager {
       this.send({ type: "screen_share_started", share_type: "camera" });
 
       // Mevcut kullanıcılara offer gönder
+      console.log("Sending offers to peers:", this.peerConnections.size);
       for (const [userId] of this.peerConnections) {
+        console.log("Creating offer for user:", userId);
         await this.createOfferForUser(userId);
       }
 
