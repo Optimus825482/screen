@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db, async_session
 from app.services.auth_service import AuthService
 from app.services.room_service import RoomService
+from app.services.diagram_service import DiagramService
 from app.routers.rooms import get_guest_session, remove_guest_session
 
 router = APIRouter(tags=["WebSocket"])
@@ -222,11 +223,13 @@ async def websocket_room(
                     })
                 
                 elif msg_type == "screen_share_started":
-                    # Biri ekran paylaşımı başlattı
+                    # Biri ekran/kamera paylaşımı başlattı
+                    share_type = data.get("share_type", "screen")  # 'screen' veya 'camera'
                     await manager.broadcast_to_room(room_id, {
                         "type": "screen_share_started",
                         "presenter_id": user_id,
-                        "presenter_name": username
+                        "presenter_name": username,
+                        "share_type": share_type
                     }, exclude_user=user_id)
                 
                 elif msg_type == "screen_share_stopped":
@@ -305,4 +308,207 @@ async def websocket_room(
                 "user_id": user_id,
                 "username": username,
                 "participants": manager.get_room_users(room_id)
+            })
+
+
+# ============================================
+# EXCALIDRAW COLLABORATIVE EDITING
+# ============================================
+
+class DiagramConnectionManager:
+    """Excalidraw için real-time collaboration yöneticisi"""
+    
+    def __init__(self):
+        # diagram_id -> {user_id -> WebSocket}
+        self.diagrams: Dict[str, Dict[str, WebSocket]] = {}
+        # user_id -> username
+        self.usernames: Dict[str, str] = {}
+        # diagram_id -> current content (memory cache)
+        self.content_cache: Dict[str, str] = {}
+        # diagram_id -> cursor positions {user_id -> {line, column}}
+        self.cursors: Dict[str, Dict[str, dict]] = {}
+    
+    async def connect(self, websocket: WebSocket, diagram_id: str, user_id: str, username: str):
+        await websocket.accept()
+        if diagram_id not in self.diagrams:
+            self.diagrams[diagram_id] = {}
+            self.cursors[diagram_id] = {}
+        self.diagrams[diagram_id][user_id] = websocket
+        self.usernames[user_id] = username
+    
+    def disconnect(self, diagram_id: str, user_id: str):
+        if diagram_id in self.diagrams and user_id in self.diagrams[diagram_id]:
+            del self.diagrams[diagram_id][user_id]
+            if not self.diagrams[diagram_id]:
+                del self.diagrams[diagram_id]
+                if diagram_id in self.content_cache:
+                    del self.content_cache[diagram_id]
+                if diagram_id in self.cursors:
+                    del self.cursors[diagram_id]
+        if diagram_id in self.cursors and user_id in self.cursors[diagram_id]:
+            del self.cursors[diagram_id][user_id]
+        if user_id in self.usernames:
+            del self.usernames[user_id]
+    
+    async def broadcast_to_diagram(self, diagram_id: str, message: dict, exclude_user: str = None):
+        if diagram_id not in self.diagrams:
+            return
+        for user_id, ws in list(self.diagrams[diagram_id].items()):
+            if user_id != exclude_user:
+                try:
+                    await ws.send_json(message)
+                except:
+                    pass
+    
+    async def send_personal(self, message: dict, websocket: WebSocket):
+        await websocket.send_json(message)
+    
+    def get_diagram_users(self, diagram_id: str) -> list[dict]:
+        if diagram_id not in self.diagrams:
+            return []
+        return [
+            {"user_id": uid, "username": self.usernames.get(uid, "Unknown")}
+            for uid in self.diagrams[diagram_id].keys()
+        ]
+    
+    def set_content(self, diagram_id: str, content: str):
+        self.content_cache[diagram_id] = content
+    
+    def get_content(self, diagram_id: str) -> str | None:
+        return self.content_cache.get(diagram_id)
+    
+    def set_cursor(self, diagram_id: str, user_id: str, position: dict):
+        if diagram_id not in self.cursors:
+            self.cursors[diagram_id] = {}
+        self.cursors[diagram_id][user_id] = position
+    
+    def get_cursors(self, diagram_id: str) -> dict:
+        return self.cursors.get(diagram_id, {})
+
+
+diagram_manager = DiagramConnectionManager()
+
+
+@router.websocket("/ws/diagram/{diagram_id}")
+async def websocket_diagram(
+    websocket: WebSocket,
+    diagram_id: str,
+    token: str = Query(None)
+):
+    """
+    WebSocket endpoint for collaborative Excalidraw editing.
+    Handles: content sync, cursor positions, presence updates
+    """
+    async with async_session() as db:
+        user = None
+        user_id = None
+        username = None
+        
+        # Token doğrulama
+        if token:
+            auth_service = AuthService(db)
+            user = await auth_service.get_user_from_token(token)
+            if user:
+                user_id = str(user.id)
+                username = user.username
+        
+        if not user_id:
+            await websocket.close(code=4001, reason="Unauthorized")
+            return
+        
+        # Diagram kontrolü
+        diagram_service = DiagramService(db)
+        diagram = await diagram_service.get_diagram_by_id(UUID(diagram_id))
+        
+        if not diagram:
+            await websocket.close(code=4004, reason="Diagram not found")
+            return
+        
+        # Bağlantıyı kabul et
+        await diagram_manager.connect(websocket, diagram_id, user_id, username)
+        
+        # Cache'de content yoksa DB'den al
+        if not diagram_manager.get_content(diagram_id):
+            diagram_manager.set_content(diagram_id, diagram.content)
+        
+        # Diğer kullanıcılara bildir
+        await diagram_manager.broadcast_to_diagram(diagram_id, {
+            "type": "user_joined",
+            "user_id": user_id,
+            "username": username,
+            "participants": diagram_manager.get_diagram_users(diagram_id)
+        }, exclude_user=user_id)
+        
+        # Yeni kullanıcıya mevcut state'i gönder
+        await diagram_manager.send_personal({
+            "type": "diagram_state",
+            "diagram_id": diagram_id,
+            "diagram_name": diagram.name,
+            "content": diagram_manager.get_content(diagram_id),
+            "participants": diagram_manager.get_diagram_users(diagram_id),
+            "cursors": diagram_manager.get_cursors(diagram_id)
+        }, websocket)
+        
+        try:
+            while True:
+                data = await websocket.receive_json()
+                msg_type = data.get("type")
+                
+                if msg_type == "content_update":
+                    # İçerik güncellendi
+                    content = data.get("content", "")
+                    diagram_manager.set_content(diagram_id, content)
+                    
+                    # Diğer kullanıcılara broadcast
+                    await diagram_manager.broadcast_to_diagram(diagram_id, {
+                        "type": "content_update",
+                        "user_id": user_id,
+                        "username": username,
+                        "content": content
+                    }, exclude_user=user_id)
+                
+                elif msg_type == "cursor_update":
+                    # Cursor pozisyonu güncellendi
+                    position = data.get("position", {})
+                    diagram_manager.set_cursor(diagram_id, user_id, position)
+                    
+                    await diagram_manager.broadcast_to_diagram(diagram_id, {
+                        "type": "cursor_update",
+                        "user_id": user_id,
+                        "username": username,
+                        "position": position
+                    }, exclude_user=user_id)
+                
+                elif msg_type == "save":
+                    # Diagram'ı kaydet
+                    content = diagram_manager.get_content(diagram_id)
+                    if content:
+                        async with async_session() as db2:
+                            diagram_service2 = DiagramService(db2)
+                            await diagram_service2.update_diagram(
+                                diagram_id=UUID(diagram_id),
+                                content=content
+                            )
+                        
+                        await diagram_manager.broadcast_to_diagram(diagram_id, {
+                            "type": "saved",
+                            "user_id": user_id,
+                            "username": username
+                        })
+                
+                elif msg_type == "ping":
+                    await diagram_manager.send_personal({"type": "pong"}, websocket)
+        
+        except WebSocketDisconnect:
+            pass
+        except Exception as e:
+            print(f"Diagram WebSocket error: {e}")
+        finally:
+            diagram_manager.disconnect(diagram_id, user_id)
+            # Diğer kullanıcılara bildir
+            await diagram_manager.broadcast_to_diagram(diagram_id, {
+                "type": "user_left",
+                "user_id": user_id,
+                "username": username,
+                "participants": diagram_manager.get_diagram_users(diagram_id)
             })

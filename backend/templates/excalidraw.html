@@ -1,0 +1,1024 @@
+{% extends "base.html" %} {% block title %}Whiteboard - ScreenShare Pro{%
+endblock %} {% block head %}
+<style>
+  .canvas-container {
+    height: calc(100vh - 64px);
+    position: relative;
+    overflow: hidden;
+  }
+  #whiteboard {
+    cursor: crosshair;
+    touch-action: none;
+  }
+  .tool-btn {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    transition: all 0.15s;
+  }
+  .tool-btn:hover {
+    background: #2d4562;
+  }
+  .tool-btn.active {
+    background: #7c3aed;
+    color: white;
+  }
+  .color-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+  .color-btn:hover {
+    transform: scale(1.1);
+  }
+  .color-btn.active {
+    border-color: white;
+    transform: scale(1.15);
+  }
+</style>
+{% endblock %} {% block content %}
+<div
+  x-data="whiteboardApp()"
+  x-init="init()"
+  x-cloak
+  class="flex flex-col h-screen bg-background-dark"
+>
+  <!-- Header -->
+  <header
+    class="flex items-center justify-between border-b border-slate-800 px-4 py-3 bg-[#111822] z-10"
+  >
+    <div class="flex items-center gap-4">
+      <a
+        href="/dashboard"
+        class="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
+      >
+        <span class="material-symbols-outlined">arrow_back</span>
+      </a>
+      <div class="flex items-center gap-3">
+        <div
+          class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-white"
+        >
+          <span class="material-symbols-outlined text-xl">draw</span>
+        </div>
+        <template x-if="currentDiagram">
+          <input
+            x-model="diagramName"
+            @blur="updateDiagramName()"
+            @keydown.enter="$event.target.blur()"
+            class="bg-transparent text-lg font-bold text-white border-none focus:outline-none focus:ring-0"
+            :size="Math.max(diagramName.length, 10)"
+          />
+        </template>
+        <template x-if="!currentDiagram">
+          <span class="text-lg font-bold text-white">Whiteboard</span>
+        </template>
+        <span
+          x-show="hasUnsavedChanges"
+          class="w-2 h-2 rounded-full bg-orange-500"
+          title="Kaydedilmemiş"
+        ></span>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <!-- Online Users -->
+      <div class="flex items-center gap-1 mr-2">
+        <template x-for="(p, idx) in participants.slice(0, 4)" :key="p.user_id">
+          <div
+            class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold -ml-2 first:ml-0 ring-2 ring-[#111822]"
+            :style="`background-color: ${getColorForUser(p.user_id)}`"
+            :title="p.username"
+          >
+            <span x-text="p.username.charAt(0).toUpperCase()"></span>
+          </div>
+        </template>
+      </div>
+
+      <button
+        @click="showProjectsModal = true"
+        class="flex items-center gap-2 rounded-lg bg-[#233348] px-3 py-2 text-sm text-white hover:bg-[#2d4562]"
+      >
+        <span class="material-symbols-outlined text-[18px]">folder_open</span>
+        <span class="hidden sm:inline">Projeler</span>
+      </button>
+
+      <button
+        @click="saveDiagram()"
+        :disabled="!currentDiagram || saving"
+        class="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-50"
+      >
+        <span class="material-symbols-outlined text-[18px]">save</span>
+        <span
+          class="hidden sm:inline"
+          x-text="saving ? 'Kaydediliyor...' : 'Kaydet'"
+        ></span>
+      </button>
+
+      <button
+        @click="exportAsPNG()"
+        :disabled="!currentDiagram"
+        class="flex items-center gap-2 rounded-lg bg-[#233348] px-3 py-2 text-sm text-white hover:bg-[#2d4562] disabled:opacity-50"
+      >
+        <span class="material-symbols-outlined text-[18px]">download</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Area -->
+  <div class="flex-1 flex">
+    <!-- Toolbar -->
+    <div
+      class="w-14 bg-[#111822] border-r border-slate-800 flex flex-col items-center py-4 gap-2"
+    >
+      <button
+        @click="setTool('pen')"
+        class="tool-btn text-slate-400"
+        :class="{'active': tool === 'pen'}"
+      >
+        <span class="material-symbols-outlined">edit</span>
+      </button>
+      <button
+        @click="setTool('line')"
+        class="tool-btn text-slate-400"
+        :class="{'active': tool === 'line'}"
+      >
+        <span class="material-symbols-outlined">horizontal_rule</span>
+      </button>
+      <button
+        @click="setTool('rect')"
+        class="tool-btn text-slate-400"
+        :class="{'active': tool === 'rect'}"
+      >
+        <span class="material-symbols-outlined">rectangle</span>
+      </button>
+      <button
+        @click="setTool('circle')"
+        class="tool-btn text-slate-400"
+        :class="{'active': tool === 'circle'}"
+      >
+        <span class="material-symbols-outlined">circle</span>
+      </button>
+      <button
+        @click="setTool('arrow')"
+        class="tool-btn text-slate-400"
+        :class="{'active': tool === 'arrow'}"
+      >
+        <span class="material-symbols-outlined">arrow_forward</span>
+      </button>
+      <button
+        @click="setTool('text')"
+        class="tool-btn text-slate-400"
+        :class="{'active': tool === 'text'}"
+      >
+        <span class="material-symbols-outlined">title</span>
+      </button>
+      <button
+        @click="setTool('eraser')"
+        class="tool-btn text-slate-400"
+        :class="{'active': tool === 'eraser'}"
+      >
+        <span class="material-symbols-outlined">ink_eraser</span>
+      </button>
+
+      <div class="w-8 h-px bg-slate-700 my-2"></div>
+
+      <!-- Colors -->
+      <div class="flex flex-col gap-2">
+        <template x-for="c in colors" :key="c">
+          <button
+            @click="strokeColor = c"
+            class="color-btn"
+            :class="{'active': strokeColor === c}"
+            :style="`background-color: ${c}`"
+          ></button>
+        </template>
+      </div>
+
+      <div class="w-8 h-px bg-slate-700 my-2"></div>
+
+      <!-- Stroke Width -->
+      <div class="flex flex-col gap-1 items-center">
+        <template x-for="w in [2, 4, 8]" :key="w">
+          <button
+            @click="strokeWidth = w"
+            class="w-8 h-8 flex items-center justify-center rounded"
+            :class="{'bg-violet-600': strokeWidth === w}"
+          >
+            <div
+              class="rounded-full bg-white"
+              :style="`width: ${w + 4}px; height: ${w + 4}px`"
+            ></div>
+          </button>
+        </template>
+      </div>
+
+      <div class="mt-auto">
+        <button
+          @click="clearCanvas()"
+          class="tool-btn text-red-400 hover:bg-red-500/20"
+        >
+          <span class="material-symbols-outlined">delete</span>
+        </button>
+        <button @click="undo()" class="tool-btn text-slate-400">
+          <span class="material-symbols-outlined">undo</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Canvas Area -->
+    <div class="canvas-container flex-1 bg-[#1a1a2e]">
+      <template x-if="currentDiagram">
+        <canvas
+          id="whiteboard"
+          x-ref="canvas"
+          @mousedown="startDrawing"
+          @mousemove="draw"
+          @mouseup="stopDrawing"
+          @mouseleave="stopDrawing"
+          @touchstart.prevent="handleTouch"
+          @touchmove.prevent="handleTouchMove"
+          @touchend="stopDrawing"
+          class="w-full h-full"
+        ></canvas>
+      </template>
+
+      <template x-if="!currentDiagram">
+        <div class="h-full flex items-center justify-center">
+          <div class="text-center">
+            <span
+              class="material-symbols-outlined text-6xl text-slate-600 mb-4 block"
+              >draw</span
+            >
+            <h2 class="text-xl font-bold text-white mb-2">
+              Çizim Tahtası Seçilmedi
+            </h2>
+            <p class="text-slate-400 mb-6">
+              Mevcut bir proje açın veya yeni bir tane oluşturun
+            </p>
+            <div class="flex items-center justify-center gap-4">
+              <button
+                @click="showProjectsModal = true"
+                class="flex items-center gap-2 rounded-lg bg-[#233348] px-6 py-3 text-sm font-medium text-white hover:bg-[#2d4562]"
+              >
+                <span class="material-symbols-outlined text-[18px]"
+                  >folder_open</span
+                >
+                Projeler
+              </button>
+              <button
+                @click="createNewDiagram()"
+                class="flex items-center gap-2 rounded-lg bg-violet-600 px-6 py-3 text-sm font-bold text-white hover:bg-violet-700"
+              >
+                <span class="material-symbols-outlined text-[18px]">add</span>
+                Yeni Çizim
+              </button>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Projects Modal -->
+  <div
+    x-show="showProjectsModal"
+    x-transition.opacity
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+  >
+    <div
+      @click.away="showProjectsModal = false"
+      class="w-full max-w-2xl bg-[#1b2431] rounded-xl border border-slate-800 shadow-2xl max-h-[80vh] flex flex-col"
+    >
+      <div class="p-6 border-b border-slate-800">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xl font-bold text-white flex items-center gap-2">
+            <span class="material-symbols-outlined text-violet-500"
+              >folder_open</span
+            >
+            Çizim Projeleri
+          </h3>
+          <button
+            @click="showProjectsModal = false"
+            class="text-slate-400 hover:text-white"
+          >
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+      </div>
+      <div class="flex-1 overflow-y-auto p-6">
+        <div x-show="loadingDiagrams" class="text-center py-8">
+          <span
+            class="material-symbols-outlined text-4xl text-slate-500 animate-spin"
+            >sync</span
+          >
+        </div>
+        <div
+          x-show="!loadingDiagrams && diagrams.length === 0"
+          class="text-center py-8"
+        >
+          <span class="material-symbols-outlined text-4xl text-slate-600"
+            >folder_off</span
+          >
+          <p class="text-slate-400 mt-2">Henüz çizim yok</p>
+        </div>
+        <div
+          x-show="!loadingDiagrams && diagrams.length > 0"
+          class="grid gap-3"
+        >
+          <template x-for="d in diagrams" :key="d.id">
+            <div
+              @click="openDiagram(d.id)"
+              class="flex items-center justify-between p-4 rounded-lg bg-[#233348] hover:bg-[#2d4562] cursor-pointer group"
+            >
+              <div class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-violet-500"
+                  >draw</span
+                >
+                <div>
+                  <p class="font-medium text-white" x-text="d.name"></p>
+                  <p
+                    class="text-xs text-slate-400"
+                    x-text="formatDate(d.updated_at)"
+                  ></p>
+                </div>
+              </div>
+              <button
+                @click.stop="deleteDiagram(d.id, d.name)"
+                class="text-red-400 hover:text-red-300 p-1 opacity-0 group-hover:opacity-100"
+              >
+                <span class="material-symbols-outlined text-[18px]"
+                  >delete</span
+                >
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div class="p-6 border-t border-slate-800">
+        <button
+          @click="createNewDiagram(); showProjectsModal = false"
+          class="w-full flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-3 text-sm font-bold text-white hover:bg-violet-700"
+        >
+          <span class="material-symbols-outlined text-[18px]">add</span>
+          Yeni Çizim Oluştur
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Diagram Modal -->
+  <div
+    x-show="showNewDiagramModal"
+    x-transition.opacity
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+  >
+    <div
+      @click.away="showNewDiagramModal = false"
+      class="w-full max-w-md bg-[#1b2431] rounded-xl border border-slate-800 shadow-2xl"
+    >
+      <div class="p-6">
+        <h3 class="text-xl font-bold mb-4 text-white">Yeni Çizim</h3>
+        <form @submit.prevent="submitNewDiagram()">
+          <input
+            x-model="newDiagramName"
+            type="text"
+            placeholder="Proje Adı"
+            required
+            class="w-full rounded-lg border border-slate-700 bg-[#111822] px-4 py-3 text-white placeholder-slate-500 focus:border-violet-500 focus:ring-violet-500"
+          />
+          <div class="flex gap-3 mt-6">
+            <button
+              type="button"
+              @click="showNewDiagramModal = false"
+              class="flex-1 px-4 py-3 rounded-lg border border-slate-700 text-slate-400 hover:bg-[#233348]"
+            >
+              İptal
+            </button>
+            <button
+              type="submit"
+              :disabled="creatingDiagram"
+              class="flex-1 px-4 py-3 rounded-lg bg-violet-600 text-white font-bold hover:bg-violet-700 disabled:opacity-50"
+            >
+              Oluştur
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Text Input Modal -->
+  <div
+    x-show="showTextInput"
+    x-transition.opacity
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+  >
+    <div
+      class="w-full max-w-sm bg-[#1b2431] rounded-xl border border-slate-800 shadow-2xl p-4"
+    >
+      <input
+        x-ref="textInput"
+        x-model="textValue"
+        @keydown.enter="addText()"
+        @keydown.escape="showTextInput = false"
+        type="text"
+        placeholder="Metin girin..."
+        class="w-full rounded-lg border border-slate-700 bg-[#111822] px-4 py-3 text-white placeholder-slate-500 focus:border-violet-500"
+      />
+      <div class="flex gap-2 mt-3">
+        <button
+          @click="showTextInput = false"
+          class="flex-1 px-3 py-2 rounded-lg border border-slate-700 text-slate-400"
+        >
+          İptal
+        </button>
+        <button
+          @click="addText()"
+          class="flex-1 px-3 py-2 rounded-lg bg-violet-600 text-white font-bold"
+        >
+          Ekle
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function whiteboardApp() {
+    return {
+      user: null,
+      userId: null,
+      ws: null,
+      canvas: null,
+      ctx: null,
+      currentDiagram: null,
+      diagramName: "",
+      participants: [],
+      diagrams: [],
+      loadingDiagrams: false,
+      showProjectsModal: false,
+      showNewDiagramModal: false,
+      newDiagramName: "",
+      creatingDiagram: false,
+      saving: false,
+      hasUnsavedChanges: false,
+      userColors: {},
+
+      // Drawing state
+      isDrawing: false,
+      tool: "pen",
+      strokeColor: "#ffffff",
+      strokeWidth: 4,
+      colors: [
+        "#ffffff",
+        "#ef4444",
+        "#22c55e",
+        "#3b82f6",
+        "#eab308",
+        "#a855f7",
+      ],
+      startX: 0,
+      startY: 0,
+      elements: [],
+      history: [],
+      currentPath: [],
+      showTextInput: false,
+      textValue: "",
+      textX: 0,
+      textY: 0,
+
+      async init() {
+        if (!Auth.requireAuth()) return;
+        this.user = Auth.getUser();
+        if (!this.user) this.user = await Auth.fetchUserInfo();
+        this.userId = this.user?.id;
+
+        const diagramId = '{{ diagram_id|default("") }}';
+        if (diagramId) await this.openDiagram(diagramId);
+        await this.loadDiagrams();
+
+        document.addEventListener("keydown", (e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+            e.preventDefault();
+            this.saveDiagram();
+          }
+          if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+            e.preventDefault();
+            this.undo();
+          }
+        });
+
+        window.addEventListener("resize", () => this.resizeCanvas());
+      },
+
+      getColorForUser(id) {
+        if (!this.userColors[id]) {
+          const colors = [
+            "#e91e63",
+            "#9c27b0",
+            "#3f51b5",
+            "#2196f3",
+            "#009688",
+            "#4caf50",
+            "#ff9800",
+          ];
+          this.userColors[id] =
+            colors[Object.keys(this.userColors).length % colors.length];
+        }
+        return this.userColors[id];
+      },
+
+      async loadDiagrams() {
+        this.loadingDiagrams = true;
+        try {
+          const response = await Auth.fetchWithAuth("/api/diagrams");
+          if (response?.ok) this.diagrams = await response.json();
+        } catch (e) {
+          console.error(e);
+        } finally {
+          this.loadingDiagrams = false;
+        }
+      },
+
+      async openDiagram(diagramId) {
+        if (this.ws) {
+          this.ws.close();
+          this.ws = null;
+        }
+        try {
+          const response = await Auth.fetchWithAuth(
+            `/api/diagrams/${diagramId}`
+          );
+          if (response?.ok) {
+            const diagram = await response.json();
+            this.currentDiagram = diagram;
+            this.diagramName = diagram.name;
+            this.hasUnsavedChanges = false;
+            this.showProjectsModal = false;
+            history.pushState({}, "", `/excalidraw/${diagramId}`);
+
+            // Load elements
+            try {
+              const data = JSON.parse(diagram.content);
+              this.elements = data.elements || [];
+            } catch {
+              this.elements = [];
+            }
+
+            this.$nextTick(() => {
+              this.initCanvas();
+              this.redraw();
+            });
+            this.connectWebSocket(diagramId);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      },
+
+      initCanvas() {
+        this.canvas = this.$refs.canvas;
+        if (!this.canvas) return;
+        this.ctx = this.canvas.getContext("2d");
+        this.resizeCanvas();
+      },
+
+      resizeCanvas() {
+        if (!this.canvas) return;
+        const container = this.canvas.parentElement;
+        this.canvas.width = container.clientWidth;
+        this.canvas.height = container.clientHeight;
+        this.redraw();
+      },
+
+      redraw() {
+        if (!this.ctx) return;
+        this.ctx.fillStyle = "#1a1a2e";
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        for (const el of this.elements) {
+          this.drawElement(el);
+        }
+      },
+
+      drawElement(el) {
+        this.ctx.strokeStyle = el.color;
+        this.ctx.fillStyle = el.color;
+        this.ctx.lineWidth = el.width;
+        this.ctx.lineCap = "round";
+        this.ctx.lineJoin = "round";
+
+        switch (el.type) {
+          case "pen":
+            if (el.points.length < 2) return;
+            this.ctx.beginPath();
+            this.ctx.moveTo(el.points[0].x, el.points[0].y);
+            for (let i = 1; i < el.points.length; i++) {
+              this.ctx.lineTo(el.points[i].x, el.points[i].y);
+            }
+            this.ctx.stroke();
+            break;
+          case "line":
+            this.ctx.beginPath();
+            this.ctx.moveTo(el.x1, el.y1);
+            this.ctx.lineTo(el.x2, el.y2);
+            this.ctx.stroke();
+            break;
+          case "rect":
+            this.ctx.strokeRect(el.x, el.y, el.w, el.h);
+            break;
+          case "circle":
+            this.ctx.beginPath();
+            this.ctx.arc(el.x, el.y, el.r, 0, Math.PI * 2);
+            this.ctx.stroke();
+            break;
+          case "arrow":
+            this.drawArrow(el.x1, el.y1, el.x2, el.y2);
+            break;
+          case "text":
+            this.ctx.font = `${el.size || 20}px Inter, sans-serif`;
+            this.ctx.fillText(el.text, el.x, el.y);
+            break;
+        }
+      },
+
+      drawArrow(x1, y1, x2, y2) {
+        const headLen = 15;
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        this.ctx.beginPath();
+        this.ctx.moveTo(x1, y1);
+        this.ctx.lineTo(x2, y2);
+        this.ctx.lineTo(
+          x2 - headLen * Math.cos(angle - Math.PI / 6),
+          y2 - headLen * Math.sin(angle - Math.PI / 6)
+        );
+        this.ctx.moveTo(x2, y2);
+        this.ctx.lineTo(
+          x2 - headLen * Math.cos(angle + Math.PI / 6),
+          y2 - headLen * Math.sin(angle + Math.PI / 6)
+        );
+        this.ctx.stroke();
+      },
+
+      getPos(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      },
+
+      startDrawing(e) {
+        if (!this.ctx) return;
+        const pos = this.getPos(e);
+        this.isDrawing = true;
+        this.startX = pos.x;
+        this.startY = pos.y;
+
+        if (this.tool === "text") {
+          this.textX = pos.x;
+          this.textY = pos.y;
+          this.textValue = "";
+          this.showTextInput = true;
+          this.$nextTick(() => this.$refs.textInput?.focus());
+          this.isDrawing = false;
+          return;
+        }
+
+        if (this.tool === "pen") {
+          this.currentPath = [{ x: pos.x, y: pos.y }];
+        }
+        if (this.tool === "eraser") {
+          this.eraseAt(pos.x, pos.y);
+        }
+      },
+
+      draw(e) {
+        if (!this.isDrawing || !this.ctx) return;
+        const pos = this.getPos(e);
+
+        if (this.tool === "pen") {
+          this.currentPath.push({ x: pos.x, y: pos.y });
+          this.redraw();
+          // Draw current path
+          this.ctx.strokeStyle = this.strokeColor;
+          this.ctx.lineWidth = this.strokeWidth;
+          this.ctx.lineCap = "round";
+          this.ctx.beginPath();
+          this.ctx.moveTo(this.currentPath[0].x, this.currentPath[0].y);
+          for (const p of this.currentPath) this.ctx.lineTo(p.x, p.y);
+          this.ctx.stroke();
+        } else if (this.tool === "eraser") {
+          this.eraseAt(pos.x, pos.y);
+        } else {
+          this.redraw();
+          this.ctx.strokeStyle = this.strokeColor;
+          this.ctx.lineWidth = this.strokeWidth;
+
+          if (this.tool === "line" || this.tool === "arrow") {
+            if (this.tool === "arrow") {
+              this.drawArrow(this.startX, this.startY, pos.x, pos.y);
+            } else {
+              this.ctx.beginPath();
+              this.ctx.moveTo(this.startX, this.startY);
+              this.ctx.lineTo(pos.x, pos.y);
+              this.ctx.stroke();
+            }
+          } else if (this.tool === "rect") {
+            this.ctx.strokeRect(
+              this.startX,
+              this.startY,
+              pos.x - this.startX,
+              pos.y - this.startY
+            );
+          } else if (this.tool === "circle") {
+            const r = Math.sqrt(
+              Math.pow(pos.x - this.startX, 2) +
+                Math.pow(pos.y - this.startY, 2)
+            );
+            this.ctx.beginPath();
+            this.ctx.arc(this.startX, this.startY, r, 0, Math.PI * 2);
+            this.ctx.stroke();
+          }
+        }
+      },
+
+      stopDrawing(e) {
+        if (!this.isDrawing) return;
+        this.isDrawing = false;
+
+        const pos = e ? this.getPos(e) : { x: this.startX, y: this.startY };
+        let newElement = null;
+
+        if (this.tool === "pen" && this.currentPath.length > 1) {
+          newElement = {
+            type: "pen",
+            points: [...this.currentPath],
+            color: this.strokeColor,
+            width: this.strokeWidth,
+          };
+        } else if (this.tool === "line") {
+          newElement = {
+            type: "line",
+            x1: this.startX,
+            y1: this.startY,
+            x2: pos.x,
+            y2: pos.y,
+            color: this.strokeColor,
+            width: this.strokeWidth,
+          };
+        } else if (this.tool === "arrow") {
+          newElement = {
+            type: "arrow",
+            x1: this.startX,
+            y1: this.startY,
+            x2: pos.x,
+            y2: pos.y,
+            color: this.strokeColor,
+            width: this.strokeWidth,
+          };
+        } else if (this.tool === "rect") {
+          newElement = {
+            type: "rect",
+            x: this.startX,
+            y: this.startY,
+            w: pos.x - this.startX,
+            h: pos.y - this.startY,
+            color: this.strokeColor,
+            width: this.strokeWidth,
+          };
+        } else if (this.tool === "circle") {
+          const r = Math.sqrt(
+            Math.pow(pos.x - this.startX, 2) + Math.pow(pos.y - this.startY, 2)
+          );
+          newElement = {
+            type: "circle",
+            x: this.startX,
+            y: this.startY,
+            r: r,
+            color: this.strokeColor,
+            width: this.strokeWidth,
+          };
+        }
+
+        if (newElement) {
+          this.elements.push(newElement);
+          this.history.push({ action: "add", element: newElement });
+          this.hasUnsavedChanges = true;
+          this.syncElements();
+        }
+        this.currentPath = [];
+      },
+
+      handleTouch(e) {
+        const touch = e.touches[0];
+        this.startDrawing({ clientX: touch.clientX, clientY: touch.clientY });
+      },
+
+      handleTouchMove(e) {
+        const touch = e.touches[0];
+        this.draw({ clientX: touch.clientX, clientY: touch.clientY });
+      },
+
+      eraseAt(x, y) {
+        const threshold = 20;
+        this.elements = this.elements.filter((el) => {
+          if (el.type === "pen") {
+            return !el.points.some(
+              (p) =>
+                Math.abs(p.x - x) < threshold && Math.abs(p.y - y) < threshold
+            );
+          }
+          if (el.type === "text") {
+            return !(Math.abs(el.x - x) < 50 && Math.abs(el.y - y) < 20);
+          }
+          return true;
+        });
+        this.redraw();
+        this.hasUnsavedChanges = true;
+      },
+
+      addText() {
+        if (!this.textValue.trim()) {
+          this.showTextInput = false;
+          return;
+        }
+        const el = {
+          type: "text",
+          x: this.textX,
+          y: this.textY,
+          text: this.textValue,
+          color: this.strokeColor,
+          size: 20,
+        };
+        this.elements.push(el);
+        this.history.push({ action: "add", element: el });
+        this.hasUnsavedChanges = true;
+        this.showTextInput = false;
+        this.redraw();
+        this.syncElements();
+      },
+
+      setTool(t) {
+        this.tool = t;
+      },
+
+      clearCanvas() {
+        if (!confirm("Tüm çizimi silmek istediğinize emin misiniz?")) return;
+        this.elements = [];
+        this.history = [];
+        this.hasUnsavedChanges = true;
+        this.redraw();
+        this.syncElements();
+      },
+
+      undo() {
+        if (this.elements.length === 0) return;
+        this.elements.pop();
+        this.hasUnsavedChanges = true;
+        this.redraw();
+        this.syncElements();
+      },
+
+      syncElements() {
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(
+            JSON.stringify({
+              type: "content_update",
+              content: JSON.stringify({ elements: this.elements }),
+            })
+          );
+        }
+      },
+
+      connectWebSocket(diagramId) {
+        const token = Auth.getToken();
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        this.ws = new WebSocket(
+          `${protocol}//${location.host}/ws/diagram/${diagramId}?token=${token}`
+        );
+        this.ws.onmessage = (e) => this.handleWsMessage(JSON.parse(e.data));
+        this.ws.onclose = () =>
+          setTimeout(
+            () =>
+              this.currentDiagram &&
+              this.connectWebSocket(this.currentDiagram.id),
+            3000
+          );
+      },
+
+      handleWsMessage(data) {
+        if (data.type === "diagram_state")
+          this.participants = data.participants;
+        else if (
+          data.type === "content_update" &&
+          data.user_id !== this.userId
+        ) {
+          try {
+            this.elements = JSON.parse(data.content).elements || [];
+            this.redraw();
+          } catch {}
+        } else if (data.type === "user_joined" || data.type === "user_left")
+          this.participants = data.participants;
+        else if (data.type === "saved") this.hasUnsavedChanges = false;
+      },
+
+      async saveDiagram() {
+        if (!this.currentDiagram || this.saving) return;
+        this.saving = true;
+        try {
+          if (this.ws?.readyState === WebSocket.OPEN)
+            this.ws.send(JSON.stringify({ type: "save" }));
+          await Auth.fetchWithAuth(`/api/diagrams/${this.currentDiagram.id}`, {
+            method: "PUT",
+            body: JSON.stringify({
+              name: this.diagramName,
+              content: JSON.stringify({ elements: this.elements }),
+            }),
+          });
+          this.hasUnsavedChanges = false;
+        } catch (e) {
+          console.error(e);
+        } finally {
+          this.saving = false;
+        }
+      },
+
+      async updateDiagramName() {
+        if (!this.currentDiagram || !this.diagramName.trim()) return;
+        await Auth.fetchWithAuth(`/api/diagrams/${this.currentDiagram.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ name: this.diagramName }),
+        });
+      },
+
+      createNewDiagram() {
+        this.newDiagramName = "";
+        this.showNewDiagramModal = true;
+      },
+
+      async submitNewDiagram() {
+        if (!this.newDiagramName.trim()) return;
+        this.creatingDiagram = true;
+        try {
+          const response = await Auth.fetchWithAuth("/api/diagrams", {
+            method: "POST",
+            body: JSON.stringify({
+              name: this.newDiagramName,
+              content: JSON.stringify({ elements: [] }),
+            }),
+          });
+          if (response?.ok) {
+            const diagram = await response.json();
+            this.showNewDiagramModal = false;
+            await this.loadDiagrams();
+            await this.openDiagram(diagram.id);
+          }
+        } catch (e) {
+          console.error(e);
+        } finally {
+          this.creatingDiagram = false;
+        }
+      },
+
+      async deleteDiagram(id, name) {
+        if (!confirm(`"${name}" çizimini silmek istediğinize emin misiniz?`))
+          return;
+        const response = await Auth.fetchWithAuth(`/api/diagrams/${id}`, {
+          method: "DELETE",
+        });
+        if (response?.ok) {
+          await this.loadDiagrams();
+          if (this.currentDiagram?.id === id) {
+            this.currentDiagram = null;
+            this.elements = [];
+            if (this.ws) this.ws.close();
+            history.pushState({}, "", "/excalidraw");
+          }
+        }
+      },
+
+      exportAsPNG() {
+        if (!this.canvas) return;
+        const link = document.createElement("a");
+        link.download = `${this.diagramName}.png`;
+        link.href = this.canvas.toDataURL("image/png");
+        link.click();
+      },
+
+      formatDate(d) {
+        return new Date(d).toLocaleDateString("tr-TR", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      },
+    };
+  }
+</script>
+{% endblock %}

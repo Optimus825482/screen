@@ -29,3 +29,6 @@ httpx>=0.28.0
 
 # Templates
 jinja2>=3.1.4
+
+# Mindmap
+freeplane-io>=1.0.0

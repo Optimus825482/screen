@@ -1,4 +1,4 @@
-// WebRTC Manager - Ekran paylaşımı ve ses iletimi
+// WebRTC Manager - Ekran paylaşımı, kamera paylaşımı ve ses iletimi
 class WebRTCManager {
   constructor(roomId, isHost) {
     this.roomId = roomId;
@@ -14,9 +14,12 @@ class WebRTCManager {
     this.onConnectionStateChange = null;
     this.onPresenterChange = null; // Yeni: Presenter değiştiğinde callback
     this.isScreenSharing = false;
+    this.isCameraSharing = false; // Kamera paylaşımı durumu
+    this.currentFacingMode = "user"; // 'user' = ön kamera, 'environment' = arka kamera
     this.isMuted = true;
     this.currentPresenterId = null; // Şu an kim paylaşıyor
     this.currentPresenterName = null;
+    this.currentShareType = null; // 'screen' veya 'camera'
     this.myUserId = null;
 
     // Metered TURN Server config (API'den güncellenecek)
@@ -195,11 +198,16 @@ class WebRTCManager {
         // Birisi ekran paylaşımı başlattı
         this.currentPresenterId = data.presenter_id;
         this.currentPresenterName = data.presenter_name;
+        this.currentShareType = data.share_type || "screen";
         if (this.onPresenterChange) {
-          this.onPresenterChange(data.presenter_id, data.presenter_name);
+          this.onPresenterChange(
+            data.presenter_id,
+            data.presenter_name,
+            this.currentShareType
+          );
         }
         // Presenter'dan offer iste
-        if (!this.isScreenSharing) {
+        if (!this.isScreenSharing && !this.isCameraSharing) {
           this.send({ type: "request_offer" });
         }
         break;
@@ -208,8 +216,9 @@ class WebRTCManager {
         // Paylaşım durduruldu
         this.currentPresenterId = null;
         this.currentPresenterName = null;
+        this.currentShareType = null;
         if (this.onPresenterChange) {
-          this.onPresenterChange(null, null);
+          this.onPresenterChange(null, null, null);
         }
         if (this.onRemoteStream) {
           this.onRemoteStream(null);
@@ -263,7 +272,11 @@ class WebRTCManager {
 
   async startScreenShare() {
     // Başka biri paylaşıyorsa engelle
-    if (this.currentPresenterId && !this.isScreenSharing) {
+    if (
+      this.currentPresenterId &&
+      !this.isScreenSharing &&
+      !this.isCameraSharing
+    ) {
       throw new Error("Başka biri ekran paylaşıyor. Lütfen bekleyin.");
     }
 
@@ -287,8 +300,9 @@ class WebRTCManager {
       };
 
       this.isScreenSharing = true;
+      this.isCameraSharing = false;
       this.isMuted = false; // Sistem sesi varsa mute değil
-      this.send({ type: "screen_share_started" });
+      this.send({ type: "screen_share_started", share_type: "screen" });
 
       // Mevcut kullanıcılara offer gönder
       for (const [userId] of this.peerConnections) {
@@ -300,6 +314,137 @@ class WebRTCManager {
       console.error("Screen share error:", error);
       throw error;
     }
+  }
+
+  // Mobil için kamera paylaşımı
+  async startCameraShare(facingMode = "user") {
+    // Başka biri paylaşıyorsa engelle
+    if (
+      this.currentPresenterId &&
+      !this.isScreenSharing &&
+      !this.isCameraSharing
+    ) {
+      throw new Error("Başka biri paylaşım yapıyor. Lütfen bekleyin.");
+    }
+
+    try {
+      this.currentFacingMode = facingMode;
+
+      this.localStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: facingMode,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      // Kamera durduğunda
+      this.localStream.getVideoTracks()[0].onended = () => {
+        this.stopCameraShare();
+      };
+
+      this.isCameraSharing = true;
+      this.isScreenSharing = false;
+      this.isMuted = false;
+      this.send({ type: "screen_share_started", share_type: "camera" });
+
+      // Mevcut kullanıcılara offer gönder
+      for (const [userId] of this.peerConnections) {
+        await this.createOfferForUser(userId);
+      }
+
+      return this.localStream;
+    } catch (error) {
+      console.error("Camera share error:", error);
+      throw error;
+    }
+  }
+
+  // Kamera değiştir (ön/arka)
+  async switchCamera() {
+    if (!this.isCameraSharing) return;
+
+    const newFacingMode =
+      this.currentFacingMode === "user" ? "environment" : "user";
+
+    try {
+      // Eski stream'i durdur
+      if (this.localStream) {
+        this.localStream.getVideoTracks().forEach((track) => track.stop());
+      }
+
+      // Yeni kamera ile stream al
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: newFacingMode,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false, // Ses track'ini koru
+      });
+
+      const newVideoTrack = newStream.getVideoTracks()[0];
+
+      // Eski video track'i yenisiyle değiştir
+      const oldVideoTrack = this.localStream.getVideoTracks()[0];
+      this.localStream.removeTrack(oldVideoTrack);
+      this.localStream.addTrack(newVideoTrack);
+
+      // Peer connection'lardaki track'i güncelle
+      for (const [userId, pc] of this.peerConnections) {
+        const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+        if (sender) {
+          await sender.replaceTrack(newVideoTrack);
+        }
+      }
+
+      this.currentFacingMode = newFacingMode;
+
+      // Track durduğunda
+      newVideoTrack.onended = () => {
+        this.stopCameraShare();
+      };
+
+      return this.localStream;
+    } catch (error) {
+      console.error("Camera switch error:", error);
+      throw error;
+    }
+  }
+
+  // Kamera paylaşımını durdur
+  stopCameraShare() {
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((track) => track.stop());
+      this.localStream = null;
+    }
+    this.isCameraSharing = false;
+    this.send({ type: "screen_share_stopped" });
+
+    // Tüm peer connection'ları kapat
+    for (const [userId] of this.peerConnections) {
+      this.closePeerConnection(userId);
+    }
+  }
+
+  // Mobil cihaz mı kontrol et
+  static isMobileDevice() {
+    return (
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
+      ) ||
+      (navigator.maxTouchPoints && navigator.maxTouchPoints > 2)
+    );
+  }
+
+  // Ekran paylaşımı destekleniyor mu
+  static isScreenShareSupported() {
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
   }
 
   async addAudioTrack() {
@@ -348,12 +493,18 @@ class WebRTCManager {
       this.localStream = null;
     }
     this.isScreenSharing = false;
+    this.isCameraSharing = false;
     this.send({ type: "screen_share_stopped" });
 
     // Tüm peer connection'ları kapat
     for (const [userId] of this.peerConnections) {
       this.closePeerConnection(userId);
     }
+  }
+
+  // Herhangi bir paylaşım aktif mi
+  isSharing() {
+    return this.isScreenSharing || this.isCameraSharing;
   }
 
   createPeerConnection(userId) {
@@ -522,7 +673,9 @@ class WebRTCManager {
 
   // Başka biri paylaşıyor mu kontrol et
   canShare() {
-    return !this.currentPresenterId || this.isScreenSharing;
+    return (
+      !this.currentPresenterId || this.isScreenSharing || this.isCameraSharing
+    );
   }
 
   // Şu anki presenter bilgisi

@@ -1,0 +1,1368 @@
+{% extends "base.html" %} {% block title %}Mindmap - ScreenShare Pro{% endblock
+%} {% block head %}
+<!-- Simple Mind Map -->
+<script src="https://cdn.jsdelivr.net/npm/simple-mind-map@0.14.0-fix.1/dist/simpleMindMap.umd.min.js"></script>
+<link
+  href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap"
+  rel="stylesheet"
+/>
+<style>
+  /* Excalidraw-inspired dark theme */
+  :root {
+    --mm-bg: #121826;
+    --mm-surface: #1e293b;
+    --mm-surface-hover: #334155;
+    --mm-border: #334155;
+    --mm-text: #f1f5f9;
+    --mm-text-muted: #94a3b8;
+    --mm-primary: #10b981;
+    --mm-primary-hover: #34d399;
+    --mm-accent: #6366f1;
+  }
+
+  .mindmap-wrapper {
+    height: calc(100vh - 72px);
+    position: relative;
+    overflow: hidden;
+    background: var(--mm-bg);
+    background-image: radial-gradient(
+      circle at 1px 1px,
+      rgba(148, 163, 184, 0.1) 1px,
+      transparent 0
+    );
+    background-size: 24px 24px;
+  }
+
+  #mindMapContainer {
+    width: 100%;
+    height: 100%;
+  }
+
+  #mindMapContainer * {
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Floating Toolbar - Excalidraw style */
+  .floating-toolbar {
+    position: absolute;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 12px;
+    background: rgba(30, 41, 59, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--mm-border);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    z-index: 100;
+  }
+
+  .toolbar-btn {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    color: var(--mm-text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .toolbar-btn:hover {
+    background: var(--mm-surface-hover);
+    color: var(--mm-text);
+  }
+
+  .toolbar-btn.active {
+    background: var(--mm-primary);
+    color: white;
+  }
+
+  .toolbar-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .toolbar-divider {
+    width: 1px;
+    height: 24px;
+    background: var(--mm-border);
+    margin: 0 8px;
+  }
+
+  /* Side Panel - Excalidraw style */
+  .side-panel {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    background: rgba(30, 41, 59, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--mm-border);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    z-index: 100;
+  }
+
+  /* Header */
+  .mm-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    background: rgba(18, 24, 38, 0.98);
+    border-bottom: 1px solid var(--mm-border);
+    backdrop-filter: blur(12px);
+    z-index: 50;
+  }
+
+  .mm-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .mm-logo-icon {
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--mm-primary), var(--mm-accent));
+    border-radius: 12px;
+    color: white;
+    font-size: 24px;
+  }
+
+  .mm-title-input {
+    background: transparent;
+    border: none;
+    color: var(--mm-text);
+    font-size: 18px;
+    font-weight: 700;
+    outline: none;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: background 0.15s;
+  }
+
+  .mm-title-input:hover,
+  .mm-title-input:focus {
+    background: var(--mm-surface);
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .btn-save {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: var(--mm-primary);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  }
+
+  .btn-save:hover {
+    background: var(--mm-primary-hover);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--mm-surface);
+    color: var(--mm-text);
+    border: 1px solid var(--mm-border);
+    border-radius: 10px;
+    font-weight: 500;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-secondary:hover {
+    background: var(--mm-surface-hover);
+    border-color: var(--mm-text-muted);
+  }
+
+  /* Participants */
+  .participants {
+    display: flex;
+    align-items: center;
+    gap: -8px;
+    padding-right: 16px;
+    border-right: 1px solid var(--mm-border);
+  }
+
+  .participant {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 600;
+    font-size: 13px;
+    border: 3px solid var(--mm-bg);
+    margin-left: -10px;
+    transition: transform 0.15s;
+  }
+
+  .participant:first-child {
+    margin-left: 0;
+  }
+
+  .participant:hover {
+    transform: translateY(-2px);
+    z-index: 10;
+  }
+
+  /* Zoom indicator */
+  .zoom-indicator {
+    position: absolute;
+    right: 16px;
+    bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(30, 41, 59, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--mm-border);
+    border-radius: 8px;
+    color: var(--mm-text-muted);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  /* Empty state */
+  .empty-state {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--mm-bg);
+    z-index: 200;
+  }
+
+  .empty-state-content {
+    max-width: 420px;
+    padding: 48px;
+    text-align: center;
+    background: var(--mm-surface);
+    border: 1px solid var(--mm-border);
+    border-radius: 24px;
+  }
+
+  .empty-state-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(
+      135deg,
+      rgba(16, 185, 129, 0.2),
+      rgba(99, 102, 241, 0.2)
+    );
+    border-radius: 20px;
+    color: var(--mm-primary);
+  }
+
+  .empty-state h2 {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--mm-text);
+    margin-bottom: 12px;
+  }
+
+  .empty-state p {
+    color: var(--mm-text-muted);
+    margin-bottom: 32px;
+    line-height: 1.6;
+  }
+
+  .empty-state-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .btn-primary-lg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 16px 24px;
+    background: var(--mm-primary);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    font-weight: 700;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+  }
+
+  .btn-primary-lg:hover {
+    background: var(--mm-primary-hover);
+    transform: scale(1.02);
+  }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 500;
+    padding: 20px;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: 480px;
+    background: var(--mm-surface);
+    border: 1px solid var(--mm-border);
+    border-radius: 20px;
+    overflow: hidden;
+  }
+
+  .modal-header {
+    padding: 24px;
+    border-bottom: 1px solid var(--mm-border);
+  }
+
+  .modal-header h3 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--mm-text);
+  }
+
+  .modal-body {
+    padding: 24px;
+  }
+
+  .modal-input {
+    width: 100%;
+    padding: 14px 16px;
+    background: var(--mm-bg);
+    border: 1px solid var(--mm-border);
+    border-radius: 10px;
+    color: var(--mm-text);
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .modal-input:focus {
+    border-color: var(--mm-primary);
+  }
+
+  .modal-footer {
+    display: flex;
+    gap: 12px;
+    padding: 24px;
+    border-top: 1px solid var(--mm-border);
+  }
+
+  .modal-footer button {
+    flex: 1;
+    padding: 14px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 15px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .modal-footer .btn-cancel {
+    background: transparent;
+    border: 1px solid var(--mm-border);
+    color: var(--mm-text-muted);
+  }
+
+  .modal-footer .btn-cancel:hover {
+    background: var(--mm-surface-hover);
+  }
+
+  .modal-footer .btn-confirm {
+    background: var(--mm-primary);
+    border: none;
+    color: white;
+  }
+
+  .modal-footer .btn-confirm:hover {
+    background: var(--mm-primary-hover);
+  }
+
+  /* Project list in modal */
+  .project-list {
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  .project-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .project-item:hover {
+    background: var(--mm-bg);
+  }
+
+  .project-info {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .project-icon {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--mm-primary), var(--mm-accent));
+    border-radius: 10px;
+    color: white;
+  }
+
+  .project-name {
+    font-weight: 600;
+    color: var(--mm-text);
+    margin-bottom: 2px;
+  }
+
+  .project-date {
+    font-size: 12px;
+    color: var(--mm-text-muted);
+  }
+
+  .project-delete {
+    padding: 8px;
+    border-radius: 8px;
+    color: var(--mm-text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    opacity: 0;
+    transition: all 0.15s;
+  }
+
+  .project-item:hover .project-delete {
+    opacity: 1;
+  }
+
+  .project-delete:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+  }
+
+  /* Alpine cloak */
+  [x-cloak] {
+    display: none !important;
+  }
+</style>
+{% endblock %} {% block content %}
+<div
+  x-data="mindmapApp()"
+  x-init="init()"
+  x-cloak
+  class="flex flex-col h-screen"
+  style="background: var(--mm-bg)"
+>
+  <!-- Header -->
+  <header class="mm-header">
+    <div class="mm-logo">
+      <a
+        href="/dashboard"
+        class="text-slate-400 hover:text-white transition-colors"
+      >
+        <span class="material-symbols-outlined">arrow_back</span>
+      </a>
+      <div class="mm-logo-icon">
+        <span class="material-symbols-outlined">account_tree</span>
+      </div>
+      <div>
+        <template x-if="currentDiagram">
+          <input
+            type="text"
+            x-model="diagramName"
+            @blur="updateDiagramName()"
+            @keydown.enter="$event.target.blur()"
+            class="mm-title-input"
+            :size="Math.max(diagramName.length, 10)"
+          />
+        </template>
+        <template x-if="!currentDiagram">
+          <span class="mm-title-input">Mindmap Aracı</span>
+        </template>
+        <div class="flex items-center gap-2 mt-1">
+          <span
+            class="text-xs font-medium"
+            :class="currentDiagram ? 'text-emerald-500' : 'text-slate-500'"
+            x-text="currentDiagram ? 'Düzenleniyor' : 'Proje seçin'"
+          ></span>
+          <span
+            x-show="hasUnsavedChanges"
+            class="w-2 h-2 rounded-full bg-orange-500 animate-pulse"
+          ></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <!-- Participants -->
+      <div class="participants" x-show="participants.length > 0">
+        <template x-for="(p, i) in participants.slice(0, 4)" :key="p.user_id">
+          <div
+            class="participant"
+            :style="`background: ${getColorForUser(p.user_id)}`"
+            :title="p.username"
+            x-text="p.username.charAt(0).toUpperCase()"
+          ></div>
+        </template>
+        <template x-if="participants.length > 4">
+          <div class="participant" style="background: #475569">
+            +<span x-text="participants.length - 4"></span>
+          </div>
+        </template>
+      </div>
+
+      <button @click="showProjectsModal = true" class="btn-secondary">
+        <span class="material-symbols-outlined text-lg">folder_open</span>
+        <span class="hidden sm:inline">Projeler</span>
+      </button>
+
+      <button
+        @click="exportImage()"
+        :disabled="!currentDiagram"
+        class="btn-secondary"
+        title="PNG olarak indir"
+      >
+        <span class="material-symbols-outlined text-lg">download</span>
+      </button>
+
+      <button
+        @click="toggleExcalidraw()"
+        class="btn-secondary"
+        :class="{'text-purple-400': isExcalidrawMode}"
+        title="Excalidraw Modu"
+      >
+        <span class="material-symbols-outlined text-lg">draw</span>
+      </button>
+
+      <button
+        @click="saveDiagram()"
+        :disabled="!currentDiagram || saving"
+        class="btn-save"
+      >
+        <span
+          class="material-symbols-outlined text-lg"
+          :class="{'animate-spin': saving}"
+          x-text="saving ? 'sync' : 'save'"
+        ></span>
+        <span x-text="saving ? 'Kaydediliyor...' : 'Kaydet'"></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Area -->
+  <div class="mindmap-wrapper">
+    <!-- Empty State -->
+    <template x-if="!currentDiagram">
+      <div class="empty-state">
+        <div class="empty-state-content">
+          <div class="empty-state-icon">
+            <span class="material-symbols-outlined text-4xl">account_tree</span>
+          </div>
+          <h2>Zihin Haritası Oluşturun</h2>
+          <p>
+            Fikirlerinizi görselleştirin, projelerinizi planlayın ve
+            düşüncelerinizi organize edin.
+          </p>
+          <div class="empty-state-actions">
+            <button @click="createNewDiagram()" class="btn-primary-lg">
+              <span class="material-symbols-outlined">add</span>
+              Yeni Mindmap
+            </button>
+            <button
+              @click="showProjectsModal = true"
+              class="btn-secondary"
+              style="justify-content: center"
+            >
+              <span class="material-symbols-outlined">folder_open</span>
+              Mevcut Projeyi Aç
+            </button>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Mind Map Container -->
+    <div id="mindMapContainer" x-show="currentDiagram"></div>
+
+    <!-- Side Panel -->
+    <template x-if="currentDiagram && mindMap">
+      <div class="side-panel">
+        <button
+          @click="addChildNode()"
+          class="toolbar-btn"
+          title="Alt düğüm ekle (Tab)"
+        >
+          <span class="material-symbols-outlined">add_circle</span>
+        </button>
+        <button
+          @click="addSiblingNode()"
+          class="toolbar-btn"
+          title="Kardeş düğüm ekle (Enter)"
+        >
+          <span class="material-symbols-outlined"
+            >subdirectory_arrow_right</span
+          >
+        </button>
+        <div class="toolbar-divider" style="width: 24px; height: 1px"></div>
+        <button
+          @click="deleteNode()"
+          class="toolbar-btn"
+          title="Düğümü sil (Delete)"
+        >
+          <span class="material-symbols-outlined">delete</span>
+        </button>
+      </div>
+    </template>
+
+    <!-- Bottom Toolbar -->
+    <template x-if="currentDiagram && mindMap">
+      <div class="floating-toolbar">
+        <button @click="zoomOut()" class="toolbar-btn" title="Uzaklaştır (-)">
+          <span class="material-symbols-outlined">remove</span>
+        </button>
+        <button @click="resetZoom()" class="toolbar-btn" title="Sıfırla">
+          <span class="material-symbols-outlined">fit_screen</span>
+        </button>
+        <button @click="zoomIn()" class="toolbar-btn" title="Yakınlaştır (+)">
+          <span class="material-symbols-outlined">add</span>
+        </button>
+        <div class="toolbar-divider"></div>
+        <button
+          @click="expandAll()"
+          class="toolbar-btn"
+          title="Tümünü Genişlet"
+        >
+          <span class="material-symbols-outlined">unfold_more</span>
+        </button>
+        <button
+          @click="collapseAll()"
+          class="toolbar-btn"
+          title="Tümünü Daralt"
+        >
+          <span class="material-symbols-outlined">unfold_less</span>
+        </button>
+        <div class="toolbar-divider"></div>
+        <button @click="undo()" class="toolbar-btn" title="Geri Al (Ctrl+Z)">
+          <span class="material-symbols-outlined">undo</span>
+        </button>
+        <button
+          @click="redo()"
+          class="toolbar-btn"
+          title="Yeniden Yap (Ctrl+Y)"
+        >
+          <span class="material-symbols-outlined">redo</span>
+        </button>
+      </div>
+    </template>
+
+    <!-- Zoom Indicator -->
+    <div class="zoom-indicator" x-show="currentDiagram">
+      <span x-text="Math.round(zoomLevel * 100) + '%'">100%</span>
+    </div>
+  </div>
+
+  <!-- Projects Modal -->
+  <div
+    x-show="showProjectsModal"
+    x-transition.opacity
+    class="modal-overlay"
+    @click.self="showProjectsModal = false"
+  >
+    <div class="modal" @click.stop>
+      <div class="modal-header">
+        <h3>Mindmap Projeleri</h3>
+      </div>
+      <div class="modal-body">
+        <div x-show="loadingDiagrams" class="text-center py-8">
+          <span
+            class="material-symbols-outlined text-3xl text-emerald-500 animate-spin"
+            >refresh</span
+          >
+          <p class="text-slate-400 mt-2">Yükleniyor...</p>
+        </div>
+
+        <div
+          x-show="!loadingDiagrams && diagrams.length === 0"
+          class="text-center py-8"
+        >
+          <span class="material-symbols-outlined text-4xl text-slate-600"
+            >folder_off</span
+          >
+          <p class="text-slate-400 mt-2">Henüz proje yok</p>
+        </div>
+
+        <div
+          class="project-list"
+          x-show="!loadingDiagrams && diagrams.length > 0"
+        >
+          <template x-for="d in diagrams" :key="d.id">
+            <div class="project-item" @click="openDiagram(d.id)">
+              <div class="project-info">
+                <div class="project-icon">
+                  <span class="material-symbols-outlined">account_tree</span>
+                </div>
+                <div>
+                  <div class="project-name" x-text="d.name"></div>
+                  <div
+                    class="project-date"
+                    x-text="formatDate(d.updated_at)"
+                  ></div>
+                </div>
+              </div>
+              <button
+                @click.stop="deleteDiagram(d.id, d.name)"
+                class="project-delete"
+                title="Sil"
+              >
+                <span class="material-symbols-outlined">delete</span>
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button @click="showProjectsModal = false" class="btn-cancel">
+          İptal
+        </button>
+        <button
+          @click="createNewDiagram(); showProjectsModal = false"
+          class="btn-confirm"
+        >
+          <span class="material-symbols-outlined text-sm mr-1">add</span>
+          Yeni Oluştur
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Diagram Modal -->
+  <div
+    x-show="showNewDiagramModal"
+    x-transition.opacity
+    class="modal-overlay"
+    @click.self="showNewDiagramModal = false"
+  >
+    <div class="modal" @click.stop>
+      <div class="modal-header">
+        <h3>Yeni Mindmap</h3>
+      </div>
+      <form @submit.prevent="submitNewDiagram()">
+        <div class="modal-body">
+          <input
+            type="text"
+            x-model="newDiagramName"
+            placeholder="Proje adı girin..."
+            class="modal-input"
+            required
+            autofocus
+          />
+        </div>
+        <div class="modal-footer">
+          <button
+            type="button"
+            @click="showNewDiagramModal = false"
+            class="btn-cancel"
+          >
+            İptal
+          </button>
+          <button type="submit" :disabled="creatingDiagram" class="btn-confirm">
+            <span
+              x-text="creatingDiagram ? 'Oluşturuluyor...' : 'Oluştur'"
+            ></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mind-elixir@4.2.2/dist/MindElixir.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mind-elixir/export-html@0.1.3/dist/MindElixirExportHtml.js"></script>
+<style>
+  /* Mind Elixir Overrides for Dark/Excalidraw Theme */
+  .map-container {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* Custom scrollbar for mind elixir container if needed */
+  .map-container ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .map-container ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .map-container ::-webkit-scrollbar-thumb {
+    background: var(--mm-border);
+    border-radius: 4px;
+  }
+</style>
+
+<script>
+  function mindmapApp() {
+    return {
+      user: null,
+      userId: null,
+      ws: null,
+      mindMap: null, // Mind Elixir Instance
+      currentDiagram: null,
+      diagramName: "",
+      participants: [],
+      diagrams: [],
+      loadingDiagrams: false,
+      showProjectsModal: false,
+      showNewDiagramModal: false,
+      newDiagramName: "",
+      creatingDiagram: false,
+      saving: false,
+      hasUnsavedChanges: false,
+      userColors: {},
+      isRemoteUpdate: false,
+      zoomLevel: 100,
+      isExcalidrawMode: false,
+
+      async init() {
+        if (!Auth.requireAuth()) return;
+        this.user = Auth.getUser();
+        if (!this.user) this.user = await Auth.fetchUserInfo();
+        this.userId = this.user?.id;
+
+        const diagramId = '{{ diagram_id|default("") }}';
+        if (diagramId) await this.openDiagram(diagramId);
+        await this.loadDiagrams();
+
+        // Keyboard shortcuts
+        document.addEventListener("keydown", (e) => {
+          if (!this.mindMap) return;
+
+          if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+            e.preventDefault();
+            this.saveDiagram();
+          }
+          if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+            e.preventDefault();
+            // Mind Elixir native undo not always exposed, check capability
+            // this.undo();
+          }
+        });
+      },
+
+      getColorForUser(id) {
+        if (!this.userColors[id]) {
+          const colors = [
+            "#e91e63",
+            "#9c27b0",
+            "#3f51b5",
+            "#2196f3",
+            "#009688",
+            "#4caf50",
+            "#ff9800",
+          ];
+          this.userColors[id] =
+            colors[Object.keys(this.userColors).length % colors.length];
+        }
+        return this.userColors[id];
+      },
+
+      async loadDiagrams() {
+        this.loadingDiagrams = true;
+        try {
+          const r = await Auth.fetchWithAuth("/api/diagrams");
+          if (r?.ok) this.diagrams = await r.json();
+        } catch (e) {
+          console.error(e);
+        } finally {
+          this.loadingDiagrams = false;
+        }
+      },
+
+      formatDate(d) {
+        if (!d) return "";
+        return new Date(d).toLocaleDateString("tr-TR", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      },
+
+      async openDiagram(diagramId) {
+        if (this.ws) {
+          this.ws.close();
+          this.ws = null;
+        }
+
+        try {
+          const r = await Auth.fetchWithAuth(`/api/diagrams/${diagramId}`);
+          if (r?.ok) {
+            const diagram = await r.json();
+            this.currentDiagram = diagram;
+            this.diagramName = diagram.name;
+            this.hasUnsavedChanges = false;
+            this.showProjectsModal = false;
+            history.pushState({}, "", `/mindmap/${diagramId}`);
+
+            let data;
+            try {
+              const parsed = JSON.parse(diagram.content);
+              // Normalize data structure for Mind Elixir
+              if (parsed.nodeData) {
+                // Already MindElixir format
+                data = parsed;
+              } else if (parsed.simpleMindMapData || parsed.root) {
+                // Convert from simple-mind-map or other format
+                data = this.convertToMindElixir(
+                  parsed.simpleMindMapData || parsed
+                );
+              } else {
+                data = this.createDefaultData();
+              }
+            } catch {
+              data = this.createDefaultData();
+            }
+
+            await this.$nextTick();
+            this.initMindElixir(data);
+            this.connectWebSocket(diagramId);
+          }
+        } catch (e) {
+          console.error(e);
+          alert("Diyagram yüklenemedi.");
+        }
+      },
+
+      createDefaultData(topic) {
+        return {
+          nodeData: {
+            id: "root",
+            topic: topic || "Yeni Fikir",
+            root: true,
+            children: [],
+          },
+          linkData: {},
+        };
+      },
+
+      convertToMindElixir(simpleData) {
+        // Recursive converter
+        const convert = (node) => {
+          return {
+            id:
+              node.data?.id || "id_" + Math.random().toString(36).substr(2, 9),
+            topic: node.data?.text || node.text || "Konu",
+            children: (node.children || []).map(convert),
+            // expanded: true // default
+          };
+        };
+
+        let root = simpleData;
+        // Handle 'root' prop if exists (MindElixir structure variance)
+        if (simpleData.root) root = simpleData.root;
+        if (simpleData.data) root = simpleData; // simple-mind-map root often at top level but wrapped
+
+        return {
+          nodeData: {
+            ...convert(root),
+            root: true,
+          },
+          linkData: {},
+        };
+      },
+
+      initMindElixir(data) {
+        const container = document.getElementById("mindMapContainer");
+        if (!container) return;
+        container.innerHTML = "";
+
+        if (!window.MindElixir) {
+          console.error("MindElixir not loaded");
+          return;
+        }
+
+        const options = {
+          el: "#mindMapContainer",
+          direction: MindElixir.LEFT,
+          data: data,
+          draggable: true,
+          contextMenu: true,
+          toolBar: false, // We use our own toolbar
+          nodeMenu: true,
+          keypress: true,
+          locale: "tr",
+          theme: this.isExcalidrawMode
+            ? this.getExcalidrawTheme()
+            : this.getDarkTheme(),
+        };
+
+        this.mindMap = new MindElixir(options);
+        this.mindMap.init();
+
+        // Event Listeners
+        this.mindMap.bus.addListener("operation", (operation) => {
+          if (this.isRemoteUpdate) return;
+          this.hasUnsavedChanges = true;
+          this.syncContent();
+        });
+
+        this.mindMap.bus.addListener("selectNode", (node) => {
+          // Optional: Show specific actions
+        });
+
+        // Apply initial visual tweaks
+        this.applyThemeOverrides();
+      },
+
+      getDarkTheme() {
+        return {
+          name: "Dark",
+          palette: [
+            "#848FA0",
+            "#748BE6",
+            "#D2F9FE",
+            "#4145A9",
+            "#789AFA",
+            "#7066F9",
+          ],
+          cssVar: {
+            "--main-color": "#ffffff",
+            "--main-bgcolor": "#1e293b",
+            "--color": "#f1f5f9",
+            "--bgcolor": "#334155",
+            "--panel-color": "#1e293b",
+            "--panel-border-color": "#334155",
+          },
+        };
+      },
+
+      getExcalidrawTheme() {
+        return {
+          name: "Excalidraw",
+          palette: ["#000000", "#000000"],
+          cssVar: {
+            "--main-color": "#000000",
+            "--main-bgcolor": "#ffffff",
+            "--color": "#2f2f2f",
+            "--bgcolor": "transparent",
+            "--root-radius": "2px",
+            "--main-radius": "2px",
+            "--root-bgcolor": "#ffffff",
+            "--root-color": "#000000",
+          },
+        };
+      },
+
+      applyThemeOverrides() {
+        const container = document.querySelector(".map-container");
+        if (!container) return;
+
+        if (this.isExcalidrawMode) {
+          container.style.fontFamily = "'Patrick Hand', cursive";
+          container.style.background = "#ffffff";
+          // Add more CSS injections for that sloppy border look if possible
+        } else {
+          container.style.fontFamily = "Inter, sans-serif";
+          container.style.background = "var(--mm-bg)";
+        }
+      },
+
+      // Toolbar Actions mapping to Mind Elixir
+      addChildNode() {
+        if (!this.mindMap) return;
+        const selected = this.mindMap.currentNode;
+        if (selected) {
+          this.mindMap.addChild(MindElixir.new("Yeni Düğüm"));
+        } else {
+          // Warn select node
+          alert("Lütfen bir düğüm seçin.");
+        }
+      },
+
+      addSiblingNode() {
+        if (!this.mindMap) return;
+        const selected = this.mindMap.currentNode;
+        if (selected) {
+          this.mindMap.insertSibling(MindElixir.new("Kardeş Düğüm"));
+        } else {
+          alert("Lütfen bir düğüm seçin.");
+        }
+      },
+
+      deleteNode() {
+        if (this.mindMap && this.mindMap.currentNode) {
+          this.mindMap.removeNode();
+        }
+      },
+
+      zoomIn() {
+        if (this.mindMap) this.mindMap.scale(0.2);
+        this.zoomLevel = Math.round(this.mindMap.scaleVal * 100);
+      },
+
+      zoomOut() {
+        if (this.mindMap) this.mindMap.scale(-0.2);
+        this.zoomLevel = Math.round(this.mindMap.scaleVal * 100);
+      },
+
+      resetZoom() {
+        if (this.mindMap) this.mindMap.toCenter();
+        this.zoomLevel = 100;
+      },
+
+      expandAll() {
+        // MindElixir doesn't have a direct 'expandAll' public API in all versions
+        // Iterating nodes might be needed, or using internal method
+        // For now, removing button or making it no-op if too complex
+        // But getAllDataString -> iterate -> expanded = true is possible
+        alert("Otomatik genişletme bu versiyonda desteklenmiyor.");
+      },
+
+      collapseAll() {
+        alert("Otomatik daraltma bu versiyonda desteklenmiyor.");
+      },
+
+      undo() {
+        // MindElixir has history plugin or internal properties
+        // If not exposed, we skip
+        console.log("Undo requested");
+      },
+
+      redo() {
+        console.log("Redo requested");
+      },
+
+      syncContent() {
+        if (this.ws?.readyState === WebSocket.OPEN && this.mindMap) {
+          const data = this.mindMap.getData();
+          this.ws.send(
+            JSON.stringify({
+              type: "content_update",
+              content: JSON.stringify(data),
+            })
+          );
+        }
+      },
+
+      connectWebSocket(diagramId) {
+        const token = Auth.getToken();
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        this.ws = new WebSocket(
+          `${protocol}//${location.host}/ws/diagram/${diagramId}?token=${token}`
+        );
+        this.ws.onopen = () => console.log("Mindmap WebSocket connected");
+        this.ws.onmessage = (e) => this.handleWsMessage(JSON.parse(e.data));
+        this.ws.onclose = () => {
+          console.log("Mindmap WebSocket closed");
+          if (this.currentDiagram && this.currentDiagram.id === diagramId) {
+            setTimeout(() => this.connectWebSocket(diagramId), 3000);
+          }
+        };
+        this.ws.onerror = (e) => console.error("WebSocket error:", e);
+      },
+
+      handleWsMessage(data) {
+        if (data.user_id === this.userId) {
+          if (data.type === "saved") this.hasUnsavedChanges = false;
+          return;
+        }
+
+        if (data.type === "content_update" && data.content) {
+          try {
+            const remoteData = JSON.parse(data.content);
+            if (this.mindMap) {
+              this.isRemoteUpdate = true;
+              this.mindMap.refresh(remoteData); // MindElixir refresh
+              this.isRemoteUpdate = false;
+            }
+          } catch (e) {
+            console.error("Failed to parse remote update", e);
+          }
+        }
+
+        if (data.type === "user_joined" || data.type === "user_left") {
+          this.participants = data.participants || [];
+        }
+      },
+
+      createNewDiagram() {
+        this.newDiagramName = "";
+        this.showNewDiagramModal = true;
+      },
+
+      async submitNewDiagram() {
+        if (!this.newDiagramName.trim()) return;
+        this.creatingDiagram = true;
+        try {
+          const defaultData = this.createDefaultData(
+            this.newDiagramName.trim()
+          );
+          const r = await Auth.fetchWithAuth("/api/diagrams", {
+            method: "POST",
+            body: JSON.stringify({
+              name: this.newDiagramName.trim(),
+              content: JSON.stringify(defaultData),
+            }),
+          });
+          if (r?.ok) {
+            const d = await r.json();
+            this.showNewDiagramModal = false;
+            await this.openDiagram(d.id);
+            await this.loadDiagrams();
+          }
+        } catch (e) {
+          console.error(e);
+        } finally {
+          this.creatingDiagram = false;
+        }
+      },
+
+      async saveDiagram() {
+        if (!this.currentDiagram || this.saving || !this.mindMap) return;
+        this.saving = true;
+        try {
+          const data = this.mindMap.getData();
+          const content = JSON.stringify(data);
+
+          if (this.ws?.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({ type: "save" }));
+          }
+          await Auth.fetchWithAuth(`/api/diagrams/${this.currentDiagram.id}`, {
+            method: "PUT",
+            body: JSON.stringify({ content }),
+          });
+          this.hasUnsavedChanges = false;
+        } catch (e) {
+          console.error(e);
+        } finally {
+          this.saving = false;
+        }
+      },
+
+      async exportImage() {
+        // Mind Elixir export functionality
+        // Using window.MindElixirExportHtml or similar logic usually requires Painter plugin
+        // Standard way:
+        try {
+          const blob = await this.mindMap.exportPng(); // if supported in version
+          if (!blob) throw new Error("Export not supported in this mode");
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "mindmap.png";
+          a.click();
+        } catch (e) {
+          alert(
+            "Dışa aktarma şu an kullanılamıyor (Painter eklentisi gerekebilir)."
+          );
+        }
+      },
+
+      async updateDiagramName() {
+        if (!this.currentDiagram || !this.diagramName.trim()) return;
+        try {
+          await Auth.fetchWithAuth(`/api/diagrams/${this.currentDiagram.id}`, {
+            method: "PUT",
+            body: JSON.stringify({ name: this.diagramName.trim() }),
+          });
+          await this.loadDiagrams();
+        } catch (e) {
+          console.error(e);
+        }
+      },
+
+      async deleteDiagram(id, name) {
+        if (!confirm(`"${name}" mindmap'ini silmek istediğinize emin misiniz?`))
+          return;
+        try {
+          const r = await Auth.fetchWithAuth(`/api/diagrams/${id}`, {
+            method: "DELETE",
+          });
+          if (r?.ok) {
+            if (this.currentDiagram?.id === id) {
+              this.currentDiagram = null;
+              if (this.mindMap) {
+                // cleanup
+                try {
+                  this.mindMap.destroy();
+                } catch {}
+                document.getElementById("mindMapContainer").innerHTML = "";
+                this.mindMap = null;
+              }
+              history.pushState({}, "", "/mindmap");
+            }
+            await this.loadDiagrams();
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      },
+
+      toggleExcalidraw() {
+        this.isExcalidrawMode = !this.isExcalidrawMode;
+        if (this.mindMap) {
+          this.initMindElixir(this.mindMap.getData());
+        }
+      },
+    };
+  }
+</script>
+{% endblock %}

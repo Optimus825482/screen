@@ -26,6 +26,7 @@ async def get_db():
 
 async def init_db():
     from app.models.user import User
+    from app.models.diagram import Diagram
     from app.utils.security import get_password_hash
     
     async with engine.begin() as conn:

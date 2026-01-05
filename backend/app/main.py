@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from app.config import settings
 from app.database import init_db
-from app.routers import auth_router, rooms_router, websocket_router
+from app.routers import auth_router, rooms_router, websocket_router, diagrams_router, mindmap_router
 
 
 @asynccontextmanager
@@ -41,6 +41,8 @@ templates = Jinja2Templates(directory="templates")
 app.include_router(auth_router)
 app.include_router(rooms_router)
 app.include_router(websocket_router)
+app.include_router(diagrams_router)
+app.include_router(mindmap_router)
 
 
 # Health Check
@@ -100,6 +102,21 @@ async def watch_page(request: Request, room_id: str):
     })
 
 
+@app.get("/mindmap", response_class=HTMLResponse)
+async def mindmap_page(request: Request):
+    """Mindmap editörü"""
+    return templates.TemplateResponse("mindmap.html", {"request": request})
+
+
+@app.get("/mindmap/{diagram_id}", response_class=HTMLResponse)
+async def mindmap_edit_page(request: Request, diagram_id: str):
+    """Mindmap editörü - belirli diagram"""
+    return templates.TemplateResponse("mindmap.html", {
+        "request": request,
+        "diagram_id": diagram_id
+    })
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8005, reload=True)
