@@ -1,179 +1,219 @@
 {% extends "base.html" %} {% block title %}ScreenShare Pro - Web Tabanlı Ekran
 Paylaşım Platformu{% endblock %} {% block head %}
 <style>
-  /* 3D Animated Background */
-  .hero-3d-bg {
-    position: absolute;
+  /* Space Background */
+  .space-bg {
+    position: fixed;
     inset: 0;
+    background: radial-gradient(ellipse at bottom, #1b2838 0%, #090a0f 100%);
     overflow: hidden;
-    background: linear-gradient(135deg, #0a1628 0%, #0d1f3c 50%, #0a1628 100%);
   }
 
-  .hero-3d-bg::before {
-    content: "";
+  /* Stars Layer 1 - Small distant stars */
+  .stars-1 {
     position: absolute;
     inset: 0;
-    background: radial-gradient(
-        ellipse 80% 50% at 50% -20%,
-        rgba(59, 130, 246, 0.15),
+    background-image: radial-gradient(1px 1px at 20px 30px, white, transparent),
+      radial-gradient(
+        1px 1px at 40px 70px,
+        rgba(255, 255, 255, 0.8),
         transparent
       ),
       radial-gradient(
-        ellipse 60% 40% at 80% 100%,
-        rgba(6, 182, 212, 0.1),
+        1px 1px at 50px 160px,
+        rgba(255, 255, 255, 0.6),
+        transparent
+      ),
+      radial-gradient(1px 1px at 90px 40px, white, transparent),
+      radial-gradient(
+        1px 1px at 130px 80px,
+        rgba(255, 255, 255, 0.7),
+        transparent
+      ),
+      radial-gradient(1px 1px at 160px 120px, white, transparent),
+      radial-gradient(
+        1px 1px at 200px 50px,
+        rgba(255, 255, 255, 0.5),
+        transparent
+      ),
+      radial-gradient(1px 1px at 220px 150px, white, transparent),
+      radial-gradient(
+        1px 1px at 250px 90px,
+        rgba(255, 255, 255, 0.8),
+        transparent
+      ),
+      radial-gradient(1px 1px at 280px 180px, white, transparent);
+    background-size: 300px 200px;
+    animation: twinkle 8s ease-in-out infinite;
+  }
+
+  /* Stars Layer 2 - Medium stars */
+  .stars-2 {
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(
+        1.5px 1.5px at 100px 50px,
+        #fff,
         transparent
       ),
       radial-gradient(
-        ellipse 40% 30% at 10% 80%,
-        rgba(99, 102, 241, 0.1),
+        1.5px 1.5px at 200px 150px,
+        rgba(255, 255, 255, 0.9),
         transparent
-      );
+      ),
+      radial-gradient(1.5px 1.5px at 300px 100px, #fff, transparent),
+      radial-gradient(
+        1.5px 1.5px at 400px 200px,
+        rgba(255, 255, 255, 0.8),
+        transparent
+      ),
+      radial-gradient(1.5px 1.5px at 500px 80px, #fff, transparent),
+      radial-gradient(
+        1.5px 1.5px at 150px 180px,
+        rgba(255, 255, 255, 0.7),
+        transparent
+      ),
+      radial-gradient(1.5px 1.5px at 350px 30px, #fff, transparent);
+    background-size: 550px 250px;
+    animation: twinkle 6s ease-in-out infinite reverse;
   }
 
-  /* Floating Grid */
-  .grid-3d {
+  /* Stars Layer 3 - Bright stars */
+  .stars-3 {
     position: absolute;
     inset: 0;
-    background-image: linear-gradient(
-        rgba(59, 130, 246, 0.03) 1px,
-        transparent 1px
+    background-image: radial-gradient(2px 2px at 150px 100px, #fff, transparent),
+      radial-gradient(
+        2.5px 2.5px at 400px 300px,
+        rgba(100, 180, 255, 0.9),
+        transparent
       ),
-      linear-gradient(90deg, rgba(59, 130, 246, 0.03) 1px, transparent 1px);
-    background-size: 60px 60px;
-    transform: perspective(500px) rotateX(60deg);
-    transform-origin: center top;
-    animation: gridMove 20s linear infinite;
+      radial-gradient(2px 2px at 700px 200px, #fff, transparent),
+      radial-gradient(
+        3px 3px at 1000px 400px,
+        rgba(255, 200, 150, 0.8),
+        transparent
+      ),
+      radial-gradient(2px 2px at 300px 500px, #fff, transparent);
+    background-size: 1200px 600px;
+    animation: twinkle 10s ease-in-out infinite;
   }
 
-  @keyframes gridMove {
-    0% {
-      background-position: 0 0;
-    }
-    100% {
-      background-position: 0 60px;
-    }
-  }
-
-  /* Floating Particles */
-  .particle {
-    position: absolute;
-    width: 4px;
-    height: 4px;
-    background: rgba(59, 130, 246, 0.6);
-    border-radius: 50%;
-    animation: float 15s infinite ease-in-out;
-    box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
-  }
-
-  @keyframes float {
+  @keyframes twinkle {
     0%,
     100% {
-      transform: translateY(0) translateX(0);
-      opacity: 0;
-    }
-    10% {
       opacity: 1;
-    }
-    90% {
-      opacity: 1;
-    }
-    100% {
-      transform: translateY(-100vh) translateX(20px);
-      opacity: 0;
-    }
-  }
-
-  /* Glowing Orbs */
-  .orb {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(60px);
-    animation: orbPulse 8s ease-in-out infinite;
-  }
-
-  @keyframes orbPulse {
-    0%,
-    100% {
-      transform: scale(1);
-      opacity: 0.3;
     }
     50% {
-      transform: scale(1.2);
-      opacity: 0.5;
+      opacity: 0.7;
     }
   }
 
-  /* Holographic Lines */
-  .holo-line {
+  /* Nebula Effect */
+  .nebula {
     position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.15;
+    animation: nebulaPulse 15s ease-in-out infinite;
+  }
+
+  @keyframes nebulaPulse {
+    0%,
+    100% {
+      transform: scale(1) rotate(0deg);
+      opacity: 0.15;
+    }
+    50% {
+      transform: scale(1.1) rotate(5deg);
+      opacity: 0.2;
+    }
+  }
+
+  /* Shooting Star */
+  .shooting-star {
+    position: absolute;
+    width: 100px;
     height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgba(6, 182, 212, 0.5),
-      transparent
-    );
-    animation: holoScan 4s ease-in-out infinite;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.8), transparent);
+    animation: shoot 8s ease-in-out infinite;
+    opacity: 0;
   }
 
-  @keyframes holoScan {
+  @keyframes shoot {
     0% {
-      transform: translateY(-100vh);
+      transform: translateX(0) translateY(0);
       opacity: 0;
     }
-    50% {
+    5% {
       opacity: 1;
     }
+    15% {
+      transform: translateX(300px) translateY(150px);
+      opacity: 0;
+    }
     100% {
-      transform: translateY(100vh);
       opacity: 0;
     }
   }
 
-  /* Title Animation */
-  .hero-title {
-    background: linear-gradient(135deg, #ffffff 0%, #3b82f6 50%, #06b6d4 100%);
-    background-size: 200% 200%;
+  /* Title Glow */
+  .title-glow {
+    text-shadow: 0 0 20px rgba(59, 130, 246, 0.5),
+      0 0 40px rgba(59, 130, 246, 0.3), 0 0 60px rgba(59, 130, 246, 0.2);
+  }
+
+  /* Gradient Text */
+  .gradient-text {
+    background: linear-gradient(135deg, #ffffff 0%, #60a5fa 50%, #22d3ee 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    animation: gradientShift 5s ease infinite;
-  }
-
-  @keyframes gradientShift {
-    0%,
-    100% {
-      background-position: 0% 50%;
-    }
-    50% {
-      background-position: 100% 50%;
-    }
-  }
-
-  /* Subtitle Glow */
-  .subtitle-glow {
-    text-shadow: 0 0 40px rgba(59, 130, 246, 0.5);
-  }
-
-  /* 3D Card Effect */
-  .card-3d {
-    transform-style: preserve-3d;
-    transition: transform 0.3s ease;
-  }
-
-  .card-3d:hover {
-    transform: translateY(-5px) rotateX(5deg);
   }
 </style>
 {% endblock %} {% block content %}
 <div
   x-data="{ isAuth: false }"
   x-init="isAuth = Auth.isAuthenticated()"
-  class="min-h-screen flex flex-col"
+  class="min-h-screen flex flex-col relative"
 >
+  <!-- Space Background -->
+  <div class="space-bg">
+    <div class="stars-1"></div>
+    <div class="stars-2"></div>
+    <div class="stars-3"></div>
+
+    <!-- Nebulas -->
+    <div
+      class="nebula w-[600px] h-[600px] bg-blue-500/30 -top-[200px] -left-[200px]"
+    ></div>
+    <div
+      class="nebula w-[500px] h-[500px] bg-purple-500/20 top-[30%] -right-[150px]"
+      style="animation-delay: -5s"
+    ></div>
+    <div
+      class="nebula w-[400px] h-[400px] bg-cyan-500/20 -bottom-[100px] left-[20%]"
+      style="animation-delay: -10s"
+    ></div>
+
+    <!-- Shooting Stars -->
+    <div
+      class="shooting-star top-[20%] left-[10%]"
+      style="animation-delay: 0s"
+    ></div>
+    <div
+      class="shooting-star top-[40%] left-[60%]"
+      style="animation-delay: 4s"
+    ></div>
+    <div
+      class="shooting-star top-[60%] left-[30%]"
+      style="animation-delay: 7s"
+    ></div>
+  </div>
+
   <!-- Header -->
   <header
-    class="w-full border-b border-border-dark/50 px-6 md:px-10 py-4 flex items-center justify-between backdrop-blur-sm bg-background-dark/80 sticky top-0 z-50"
+    class="relative z-50 w-full border-b border-white/10 px-6 md:px-10 py-4 flex items-center justify-between backdrop-blur-sm bg-black/20"
   >
     <a href="/" class="flex items-center gap-4 text-white">
       <div class="size-8 text-primary">
@@ -213,164 +253,26 @@ Paylaşım Platformu{% endblock %} {% block head %}
     </div>
   </header>
 
-  <!-- Hero Section with 3D Background -->
-  <main class="flex-1">
-    <section
-      class="relative min-h-[80vh] flex items-center justify-center overflow-hidden"
-    >
-      <!-- 3D Animated Background -->
-      <div class="hero-3d-bg">
-        <div class="grid-3d"></div>
-        <div class="orb w-96 h-96 bg-blue-500/20 top-[-10%] left-[-10%]"></div>
-        <div
-          class="orb w-80 h-80 bg-cyan-500/15 bottom-[-5%] right-[-5%]"
-          style="animation-delay: -4s"
-        ></div>
-        <div
-          class="orb w-64 h-64 bg-indigo-500/10 top-[30%] right-[10%]"
-          style="animation-delay: -2s"
-        ></div>
-        <div class="particle" style="left: 10%; animation-delay: 0s"></div>
-        <div class="particle" style="left: 20%; animation-delay: 2s"></div>
-        <div class="particle" style="left: 30%; animation-delay: 4s"></div>
-        <div class="particle" style="left: 40%; animation-delay: 1s"></div>
-        <div class="particle" style="left: 50%; animation-delay: 3s"></div>
-        <div class="particle" style="left: 60%; animation-delay: 5s"></div>
-        <div class="particle" style="left: 70%; animation-delay: 2.5s"></div>
-        <div class="particle" style="left: 80%; animation-delay: 4.5s"></div>
-        <div class="particle" style="left: 90%; animation-delay: 1.5s"></div>
-        <div class="holo-line w-full" style="animation-delay: 0s"></div>
-        <div class="holo-line w-full" style="animation-delay: 2s"></div>
-        <div class="holo-line w-full" style="animation-delay: 4s"></div>
-      </div>
-
-      <!-- Content -->
-      <div class="relative z-10 max-w-5xl mx-auto px-6 text-center">
-        <div
-          class="inline-flex items-center gap-2 rounded-full bg-white/5 backdrop-blur-sm border border-white/10 px-5 py-2.5 text-sm font-medium text-cyan-400 mb-10"
-        >
-          <span class="material-symbols-outlined text-[18px]">verified</span>
-          Kurumsal Güvenlik Standartları
-        </div>
-
-        <h1
-          class="hero-title text-5xl md:text-7xl lg:text-8xl font-black tracking-tight mb-6 leading-[1.1]"
-        >
-          ScreenShare Pro
-        </h1>
-
-        <p
-          class="subtitle-glow text-xl md:text-2xl text-white/90 font-light mb-4"
-        >
-          By <span class="font-semibold text-cyan-400">Erkan ERDEM</span>
-        </p>
-
-        <p
-          class="text-lg md:text-xl text-white/60 max-w-2xl mx-auto mb-12 leading-relaxed"
-        >
-          Güvenli ekran paylaşımı, her yerden erişim.<br
-            class="hidden md:block"
-          />
-          Firewall arkasındaki kullanıcılarla bile sorunsuz bağlantı.
-        </p>
-
-        <div
-          class="flex flex-col sm:flex-row items-center justify-center gap-4"
-        >
-          <a
-            href="/login"
-            class="group flex items-center justify-center gap-3 rounded-xl h-14 px-8 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white text-base font-bold transition-all shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:scale-105"
-          >
-            <span
-              class="material-symbols-outlined group-hover:rotate-12 transition-transform"
-              >login</span
-            >
-            Hemen Başla
-          </a>
-          <a
-            href="#features"
-            class="flex items-center justify-center gap-3 rounded-xl h-14 px-8 bg-white/5 backdrop-blur-sm border border-white/10 text-white hover:bg-white/10 text-base font-medium transition-all hover:scale-105"
-          >
-            <span class="material-symbols-outlined">play_circle</span>
-            Nasıl Çalışır?
-          </a>
-        </div>
-
-        <div class="mt-16 grid grid-cols-3 gap-8 max-w-lg mx-auto">
-          <div class="text-center">
-            <div class="text-3xl font-bold text-white mb-1">256</div>
-            <div class="text-sm text-white/50">Bit Şifreleme</div>
-          </div>
-          <div class="text-center">
-            <div class="text-3xl font-bold text-white mb-1">P2P</div>
-            <div class="text-sm text-white/50">Direkt Bağlantı</div>
-          </div>
-          <div class="text-center">
-            <div class="text-3xl font-bold text-white mb-1">0</div>
-            <div class="text-sm text-white/50">Kurulum</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
-        <span class="material-symbols-outlined text-white/30 text-3xl"
-          >expand_more</span
-        >
-      </div>
-    </section>
-  </main>
-</div>
-
-    <!-- Features -->
-    <section id="features" class="py-24 border-t border-white/5 bg-gradient-to-b from-transparent to-black/20">
-      <div class="max-w-6xl mx-auto px-6">
-        <div class="text-center mb-16">
-          <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Neden ScreenShare Pro?</h2>
-          <p class="text-white/50 max-w-xl mx-auto">Kurumsal düzeyde güvenlik ve kullanım kolaylığı bir arada.</p>
-        </div>
-        <div class="grid md:grid-cols-3 gap-6">
-          <div class="card-3d p-8 rounded-2xl bg-gradient-to-br from-white/5 to-transparent border border-white/10 backdrop-blur-sm">
-            <div class="w-14 h-14 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 mb-6">
-              <span class="material-symbols-outlined text-3xl">security</span>
-            </div>
-            <h3 class="text-xl font-bold text-white mb-3">Kurumsal Güvenlik</h3>
-            <p class="text-white/50 leading-relaxed">HTTPS, WebRTC DTLS-SRTP şifreleme ve JWT tabanlı kimlik doğrulama ile verileriniz güvende.</p>
-          </div>
-          <div class="card-3d p-8 rounded-2xl bg-gradient-to-br from-white/5 to-transparent border border-white/10 backdrop-blur-sm">
-            <div class="w-14 h-14 rounded-xl bg-green-500/10 flex items-center justify-center text-green-400 mb-6">
-              <span class="material-symbols-outlined text-3xl">bolt</span>
-            </div>
-            <h3 class="text-xl font-bold text-white mb-3">Anında Başlat</h3>
-            <p class="text-white/50 leading-relaxed">Kurulum yok, indirme yok. Tarayıcınızı açın ve saniyeler içinde paylaşmaya başlayın.</p>
-          </div>
-          <div class="card-3d p-8 rounded-2xl bg-gradient-to-br from-white/5 to-transparent border border-white/10 backdrop-blur-sm">
-            <div class="w-14 h-14 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400 mb-6">
-              <span class="material-symbols-outlined text-3xl">lan</span>
-            </div>
-            <h3 class="text-xl font-bold text-white mb-3">Firewall Dostu</h3>
-            <p class="text-white/50 leading-relaxed">TURN sunucusu ile NAT/Firewall arkasındaki kullanıcılara sorunsuz erişim sağlayın.</p>
-          </div>
-        </div>
-      </div>
-    </section>
+  <!-- Hero Section -->
+  <main class="flex-1 relative z-10 flex items-center justify-center">
+    <div class="text-center px-6">
+      <h1
+        class="gradient-text title-glow text-5xl md:text-7xl lg:text-8xl font-black tracking-tight mb-6"
+      >
+        ScreenShare Pro
+      </h1>
+      <p class="text-xl md:text-2xl text-white/80 font-light">
+        By <span class="font-semibold text-cyan-400">Erkan ERDEM</span>
+      </p>
+    </div>
   </main>
 
   <!-- Footer -->
-  <footer class="border-t border-white/5 py-10 bg-black/20">
-    <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
-      <div class="flex items-center gap-3">
-        <div class="size-6 text-primary">
-          <svg class="w-full h-full" fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-            <path clip-rule="evenodd" d="M39.475 21.6262C40.358 21.4363 40.6863 21.5589 40.7581 21.5934C40.7876 21.655 40.8547 21.857 40.8082 22.3336C40.7408 23.0255 40.4502 24.0046 39.8572 25.2301C38.6799 27.6631 36.5085 30.6631 33.5858 33.5858C30.6631 36.5085 27.6632 38.6799 25.2301 39.8572C24.0046 40.4502 23.0255 40.7407 22.3336 40.8082C21.8571 40.8547 21.6551 40.7875 21.5934 40.7581C21.5589 40.6863 21.4363 40.358 21.6262 39.475C21.8562 38.4054 22.4689 36.9657 23.5038 35.2817C24.7575 33.2417 26.5497 30.9744 28.7621 28.762C30.9744 26.5497 33.2417 24.7574 35.2817 23.5037C36.9657 22.4689 38.4054 21.8562 39.475 21.6262ZM4.41189 29.2403L18.7597 43.5881C19.8813 44.7097 21.4027 44.9179 22.7217 44.7893C24.0585 44.659 25.5148 44.1631 26.9723 43.4579C29.9052 42.0387 33.2618 39.5667 36.4142 36.4142C39.5667 33.2618 42.0387 29.9052 43.4579 26.9723C44.1631 25.5148 44.659 24.0585 44.7893 22.7217C44.9179 21.4027 44.7097 19.8813 43.5881 18.7597L29.2403 4.41187C27.8527 3.02428 25.8765 3.02573 24.2861 3.36776C22.6081 3.72863 20.7334 4.58419 18.8396 5.74801C16.4978 7.18716 13.9881 9.18353 11.5858 11.5858C9.18354 13.988 7.18717 16.4978 5.74802 18.8396C4.58421 20.7334 3.72865 22.6081 3.36778 24.2861C3.02574 25.8765 3.02429 27.8527 4.41189 29.2403Z" fill="currentColor" fill-rule="evenodd"></path>
-          </svg>
-        </div>
-        <p class="text-sm text-white/40">© 2026 ScreenShare Pro by Erkan ERDEM</p>
-      </div>
-      <div class="flex items-center gap-8 text-sm text-white/40">
-        <a href="#" class="hover:text-white transition-colors">Gizlilik</a>
-        <a href="#" class="hover:text-white transition-colors">Şartlar</a>
-        <a href="#" class="hover:text-white transition-colors">İletişim</a>
-      </div>
+  <footer
+    class="relative z-10 border-t border-white/10 py-6 backdrop-blur-sm bg-black/20"
+  >
+    <div class="max-w-6xl mx-auto px-6 text-center">
+      <p class="text-sm text-white/40">© 2026 ScreenShare Pro by Erkan ERDEM</p>
     </div>
   </footer>
 </div>
