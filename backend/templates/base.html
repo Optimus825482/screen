@@ -2,7 +2,57 @@
 <html lang="tr" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="ScreenShare Pro" />
+    <meta name="application-name" content="ScreenShare Pro" />
+    <meta name="theme-color" content="#0a0f1a" />
+    <meta name="msapplication-TileColor" content="#0a0f1a" />
+    <meta
+      name="msapplication-TileImage"
+      content="/static/icons/icon-144x144.png"
+    />
+    <meta
+      name="description"
+      content="Güvenli ekran paylaşımı platformu - By Erkan ERDEM"
+    />
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/static/manifest.json" />
+
+    <!-- Favicons -->
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="/static/icons/favicon-32x32.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="/static/icons/favicon-16x16.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="/static/icons/apple-touch-icon.png"
+    />
+
+    <!-- iOS Splash Screens -->
+    <link
+      rel="apple-touch-startup-image"
+      href="/static/icons/icon-512x512.png"
+    />
+
     <title>{% block title %}ScreenShare Pro{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <link
@@ -25,14 +75,20 @@
             colors: {
               primary: "#136dec",
               "primary-hover": "#1058c7",
-              "background-dark": "#101822",
-              "surface-dark": "#1a2430",
-              "surface-hover": "#233348",
-              "border-dark": "#233348",
-              "text-secondary": "#92a9c9",
+              "background-dark": "#0a0f1a",
+              "surface-dark": "#111827",
+              "surface-hover": "#1f2937",
+              "border-dark": "#1f2937",
+              "text-secondary": "#9ca3af",
             },
             fontFamily: {
               display: ["Inter", "sans-serif"],
+            },
+            spacing: {
+              "safe-top": "env(safe-area-inset-top)",
+              "safe-bottom": "env(safe-area-inset-bottom)",
+              "safe-left": "env(safe-area-inset-left)",
+              "safe-right": "env(safe-area-inset-right)",
             },
           },
         },
@@ -53,24 +109,116 @@
         height: 6px;
       }
       ::-webkit-scrollbar-track {
-        background: #101822;
+        background: #0a0f1a;
       }
       ::-webkit-scrollbar-thumb {
-        background: #233348;
+        background: #1f2937;
         border-radius: 3px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #324867;
+        background: #374151;
+      }
+
+      /* Mobile Optimizations */
+      * {
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+      }
+
+      /* Safe area padding for notched devices */
+      .safe-area-top {
+        padding-top: env(safe-area-inset-top);
+      }
+      .safe-area-bottom {
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      .safe-area-left {
+        padding-left: env(safe-area-inset-left);
+      }
+      .safe-area-right {
+        padding-right: env(safe-area-inset-right);
+      }
+
+      /* Prevent pull-to-refresh on mobile */
+      body {
+        overscroll-behavior-y: contain;
+      }
+
+      /* Better touch targets */
+      button,
+      a,
+      input,
+      select,
+      textarea {
+        min-height: 44px;
+        min-width: 44px;
+      }
+
+      /* Smooth scrolling */
+      html {
+        scroll-behavior: smooth;
+      }
+
+      /* PWA standalone mode adjustments */
+      @media (display-mode: standalone) {
+        body {
+          padding-top: env(safe-area-inset-top);
+        }
+      }
+
+      /* Mobile landscape adjustments */
+      @media (max-height: 500px) and (orientation: landscape) {
+        .hide-landscape {
+          display: none !important;
+        }
       }
     </style>
     {% block head %}{% endblock %}
   </head>
   <body
-    class="bg-background-dark font-display text-white antialiased min-h-screen"
+    class="bg-background-dark font-display text-white antialiased min-h-screen safe-area-left safe-area-right"
   >
     {% block content %}{% endblock %}
 
     <script src="/static/js/auth.js"></script>
+
+    <!-- Service Worker Registration -->
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker
+            .register("/static/sw.js")
+            .then((registration) => {
+              console.log("SW registered:", registration.scope);
+            })
+            .catch((error) => {
+              console.log("SW registration failed:", error);
+            });
+        });
+      }
+
+      // PWA Install Prompt
+      let deferredPrompt;
+      window.addEventListener("beforeinstallprompt", (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        // Show install button if needed
+        const installBtn = document.getElementById("pwa-install-btn");
+        if (installBtn) {
+          installBtn.style.display = "flex";
+          installBtn.addEventListener("click", () => {
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then((choiceResult) => {
+              if (choiceResult.outcome === "accepted") {
+                console.log("PWA installed");
+              }
+              deferredPrompt = null;
+              installBtn.style.display = "none";
+            });
+          });
+        }
+      });
+    </script>
     {% block scripts %}{% endblock %}
   </body>
 </html>

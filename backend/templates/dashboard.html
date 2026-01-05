@@ -4,7 +4,7 @@ endblock %} {% block content %}
   x-data="dashboardPage()"
   x-init="init()"
   x-cloak
-  class="flex min-h-screen w-full flex-row overflow-hidden"
+  class="flex min-h-screen w-full flex-col md:flex-row overflow-hidden"
 >
   <!-- Sidebar -->
   <aside
@@ -105,33 +105,63 @@ endblock %} {% block content %}
 
   <!-- Main Content -->
   <main
-    class="flex h-screen flex-1 flex-col overflow-y-auto bg-background-dark"
+    class="flex flex-1 flex-col overflow-y-auto bg-background-dark pb-20 md:pb-0"
   >
-    <div class="flex flex-col gap-8 p-6 md:p-10 max-w-7xl mx-auto w-full">
-      <!-- Header -->
+    <div
+      class="flex flex-col gap-6 p-4 md:p-6 lg:p-10 max-w-7xl mx-auto w-full"
+    >
+      <!-- Mobile Header -->
+      <div class="flex md:hidden items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div
+            class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-blue-600 text-white shadow-lg"
+          >
+            <span class="material-symbols-outlined text-xl">screen_share</span>
+          </div>
+          <div>
+            <h1 class="text-base font-bold">ScreenShare Pro</h1>
+            <p class="text-xs text-slate-400">
+              Merhaba, <span x-text="user?.username"></span>
+            </p>
+          </div>
+        </div>
+        <button
+          @click="showUserMenu = !showUserMenu"
+          class="relative p-2 rounded-lg hover:bg-surface-dark"
+        >
+          <div
+            class="h-9 w-9 rounded-full flex items-center justify-center text-white font-bold text-sm"
+            :class="isAdmin ? 'bg-orange-500' : 'bg-primary'"
+          >
+            <span x-text="user?.username?.charAt(0).toUpperCase()"></span>
+          </div>
+        </button>
+      </div>
+
+      <!-- Desktop Header -->
       <div
-        class="flex flex-col md:flex-row md:items-center justify-between gap-4"
+        class="hidden md:flex flex-col md:flex-row md:items-center justify-between gap-4"
       >
         <div class="flex flex-col gap-1">
-          <h1 class="text-3xl font-black tracking-tight text-white md:text-4xl">
+          <h1 class="text-2xl lg:text-3xl font-black tracking-tight text-white">
             Merhaba, <span x-text="user?.username"></span>
-            <span x-show="isAdmin" class="text-orange-400 text-lg"
+            <span x-show="isAdmin" class="text-orange-400 text-base"
               >(Admin)</span
             >
           </h1>
-          <p class="text-base text-slate-400">
+          <p class="text-sm text-slate-400">
             Toplantılarınızı yönetin ve işbirliğine başlayın.
           </p>
         </div>
         <div class="flex items-center gap-3">
-          <div class="relative hidden md:flex">
+          <div class="relative hidden lg:flex">
             <span
               class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 material-symbols-outlined text-[20px]"
               >search</span
             >
             <input
               x-model="searchQuery"
-              class="h-10 w-64 rounded-lg border-none bg-[#233348] pl-10 pr-4 text-sm text-white placeholder-slate-400 focus:ring-2 focus:ring-primary"
+              class="h-10 w-64 rounded-lg border-none bg-surface-dark pl-10 pr-4 text-sm text-white placeholder-slate-400 focus:ring-2 focus:ring-primary"
               placeholder="Odaları ara..."
               type="text"
             />
@@ -141,18 +171,16 @@ endblock %} {% block content %}
 
       <!-- ROOMS TAB -->
       <template x-if="activeTab === 'rooms'">
-        <div class="flex flex-col gap-8">
-          <!-- Hero Section -->
+        <div class="flex flex-col gap-6">
+          <!-- Hero Section - Mobile Optimized -->
           <section
-            class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#111822] to-[#1a2636] p-8 md:p-12 shadow-xl border border-slate-800"
+            class="relative overflow-hidden rounded-xl md:rounded-2xl bg-gradient-to-br from-surface-dark to-background-dark p-5 md:p-8 lg:p-12 shadow-xl border border-border-dark"
           >
             <div
               class="absolute right-0 top-0 h-full w-1/2 bg-gradient-to-l from-primary/10 to-transparent opacity-50"
             ></div>
-            <div
-              class="relative z-10 grid gap-8 lg:grid-cols-2 lg:items-center"
-            >
-              <div class="flex flex-col gap-4">
+            <div class="relative z-10 flex flex-col gap-6">
+              <div class="flex flex-col gap-3">
                 <div
                   class="inline-flex w-fit items-center gap-2 rounded-full bg-green-500/10 px-3 py-1 text-xs font-medium text-green-500 ring-1 ring-inset ring-green-500/20"
                 >
@@ -167,114 +195,196 @@ endblock %} {% block content %}
                   Sistem Çalışıyor
                 </div>
                 <h2
-                  class="text-3xl font-bold leading-tight text-white md:text-4xl"
+                  class="text-xl md:text-2xl lg:text-3xl font-bold leading-tight text-white"
                 >
                   Anında Toplantı Başlat
                 </h2>
-                <p class="max-w-md text-slate-400">
+                <p class="text-sm text-slate-400 max-w-md">
                   Anında güvenli bir oda oluşturun.
                 </p>
-                <div class="mt-4 flex flex-wrap gap-3">
-                  <button
-                    @click="showCreateModal = true"
-                    class="flex h-12 items-center gap-2 rounded-lg bg-primary px-6 text-sm font-bold text-white shadow-lg shadow-primary/30 hover:bg-blue-600"
-                  >
-                    <span class="material-symbols-outlined">video_call</span
-                    >Yeni Oda Oluştur
-                  </button>
-                </div>
               </div>
-              <div class="flex items-center justify-center lg:justify-end">
-                <div
-                  class="w-full max-w-sm rounded-xl bg-[#233348]/80 p-6 shadow-2xl border border-slate-700"
+
+              <div class="flex flex-col sm:flex-row gap-3">
+                <button
+                  @click="showCreateModal = true"
+                  class="flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-6 text-sm font-bold text-white shadow-lg shadow-primary/30 hover:bg-blue-600 active:scale-95 transition-all"
                 >
-                  <label class="mb-2 block text-sm font-medium text-slate-200"
-                    >Mevcut Odaya Katıl</label
+                  <span class="material-symbols-outlined">video_call</span>Yeni
+                  Oda
+                </button>
+                <div class="flex gap-2 flex-1 sm:max-w-xs">
+                  <input
+                    x-model="joinCode"
+                    class="flex-1 rounded-xl border-border-dark bg-background-dark px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-primary focus:ring-primary"
+                    placeholder="Oda Kodu"
+                    type="text"
+                  />
+                  <button
+                    @click="joinRoom()"
+                    class="flex items-center justify-center rounded-xl bg-surface-hover px-4 text-white hover:bg-border-dark active:scale-95 transition-all"
                   >
-                  <form @submit.prevent="joinRoom" class="flex gap-2">
-                    <input
-                      x-model="joinCode"
-                      class="flex-1 rounded-lg border-slate-600 bg-[#111822] px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:border-primary focus:ring-primary"
-                      placeholder="Oda Kodunu Girin"
-                      type="text"
-                    />
-                    <button
-                      type="submit"
-                      class="flex items-center justify-center rounded-lg bg-slate-700 px-4 text-white hover:bg-slate-600"
-                    >
-                      <span class="material-symbols-outlined"
-                        >arrow_forward</span
-                      >
-                    </button>
-                  </form>
+                    <span class="material-symbols-outlined">arrow_forward</span>
+                  </button>
                 </div>
               </div>
             </div>
           </section>
 
-          <!-- Stats -->
-          <div class="grid gap-4 md:grid-cols-3">
+          <!-- Stats - Mobile Grid -->
+          <div class="grid grid-cols-3 gap-3 md:gap-4">
             <div
-              class="flex flex-col gap-2 rounded-xl bg-[#233348] p-6 border border-slate-800/60"
+              class="flex flex-col gap-1 md:gap-2 rounded-xl bg-surface-dark p-4 md:p-6 border border-border-dark"
             >
               <div class="flex items-center justify-between">
-                <p class="text-sm font-medium text-[#92a9c9]">
-                  Toplam Toplantı
-                </p>
-                <span class="rounded-full bg-primary/10 p-2 text-primary"
-                  ><span class="material-symbols-outlined text-[20px]"
-                    >leaderboard</span
-                  ></span
+                <p
+                  class="text-xs md:text-sm font-medium text-slate-400 hidden sm:block"
                 >
+                  Toplam
+                </p>
+                <span
+                  class="rounded-full bg-primary/10 p-1.5 md:p-2 text-primary"
+                >
+                  <span
+                    class="material-symbols-outlined text-[16px] md:text-[20px]"
+                    >leaderboard</span
+                  >
+                </span>
               </div>
               <p
-                class="text-3xl font-bold text-white"
+                class="text-xl md:text-3xl font-bold text-white"
                 x-text="stats.totalMeetings"
               ></p>
+              <p class="text-xs text-slate-500 sm:hidden">Toplantı</p>
             </div>
             <div
-              class="flex flex-col gap-2 rounded-xl bg-[#233348] p-6 border border-slate-800/60"
+              class="flex flex-col gap-1 md:gap-2 rounded-xl bg-surface-dark p-4 md:p-6 border border-border-dark"
             >
               <div class="flex items-center justify-between">
-                <p class="text-sm font-medium text-[#92a9c9]">Ort. Süre</p>
-                <span class="rounded-full bg-purple-500/10 p-2 text-purple-500"
-                  ><span class="material-symbols-outlined text-[20px]"
-                    >schedule</span
-                  ></span
+                <p
+                  class="text-xs md:text-sm font-medium text-slate-400 hidden sm:block"
                 >
+                  Ort. Süre
+                </p>
+                <span
+                  class="rounded-full bg-purple-500/10 p-1.5 md:p-2 text-purple-500"
+                >
+                  <span
+                    class="material-symbols-outlined text-[16px] md:text-[20px]"
+                    >schedule</span
+                  >
+                </span>
               </div>
               <p
-                class="text-3xl font-bold text-white"
+                class="text-xl md:text-3xl font-bold text-white"
                 x-text="stats.avgDuration + 'm'"
               ></p>
+              <p class="text-xs text-slate-500 sm:hidden">Dakika</p>
             </div>
             <div
-              class="flex flex-col gap-2 rounded-xl bg-[#233348] p-6 border border-slate-800/60"
+              class="flex flex-col gap-1 md:gap-2 rounded-xl bg-surface-dark p-4 md:p-6 border border-border-dark"
             >
               <div class="flex items-center justify-between">
-                <p class="text-sm font-medium text-[#92a9c9]">Aktif Oda</p>
-                <span class="rounded-full bg-orange-500/10 p-2 text-orange-500"
-                  ><span class="material-symbols-outlined text-[20px]"
-                    >meeting_room</span
-                  ></span
+                <p
+                  class="text-xs md:text-sm font-medium text-slate-400 hidden sm:block"
                 >
+                  Aktif
+                </p>
+                <span
+                  class="rounded-full bg-orange-500/10 p-1.5 md:p-2 text-orange-500"
+                >
+                  <span
+                    class="material-symbols-outlined text-[16px] md:text-[20px]"
+                    >meeting_room</span
+                  >
+                </span>
               </div>
               <p
-                class="text-3xl font-bold text-white"
+                class="text-xl md:text-3xl font-bold text-white"
                 x-text="stats.activeRooms"
               ></p>
+              <p class="text-xs text-slate-500 sm:hidden">Oda</p>
             </div>
           </div>
 
-          <!-- Rooms Table -->
-          <div class="flex flex-col gap-4">
-            <h3 class="text-lg font-bold text-white px-1">Son Aktivite</h3>
+          <!-- Rooms List - Mobile Cards -->
+          <div class="flex flex-col gap-3">
+            <h3 class="text-base font-bold text-white px-1">Son Aktivite</h3>
+
+            <!-- Mobile Cards -->
+            <div class="flex flex-col gap-3 md:hidden">
+              <template x-for="room in filteredRooms" :key="room.id">
+                <div
+                  class="rounded-xl bg-surface-dark border border-border-dark p-4"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                      <div
+                        class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0"
+                      >
+                        <span class="material-symbols-outlined">videocam</span>
+                      </div>
+                      <div class="min-w-0">
+                        <div
+                          class="font-medium text-white truncate"
+                          x-text="room.name"
+                        ></div>
+                        <div class="flex items-center gap-2 mt-1">
+                          <code
+                            class="text-xs bg-background-dark px-2 py-0.5 rounded text-slate-400"
+                            x-text="room.invite_code"
+                          ></code>
+                          <button
+                            @click="copyInviteLink(room.invite_code)"
+                            class="text-slate-400 active:text-primary"
+                          >
+                            <span class="material-symbols-outlined text-[14px]"
+                              >content_copy</span
+                            >
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <span
+                      x-show="room.status === 'active'"
+                      class="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-500 shrink-0"
+                      >Aktif</span
+                    >
+                    <span
+                      x-show="room.status === 'ended'"
+                      class="inline-flex items-center rounded-full bg-slate-700/50 px-2 py-0.5 text-xs font-medium text-slate-400 shrink-0"
+                      >Bitti</span
+                    >
+                  </div>
+                  <template x-if="room.status === 'active'">
+                    <a
+                      :href="'/room/' + room.id"
+                      class="mt-3 flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-white active:scale-95 transition-all"
+                    >
+                      <span class="material-symbols-outlined text-[18px]"
+                        >login</span
+                      >Katıl
+                    </a>
+                  </template>
+                </div>
+              </template>
+              <div
+                x-show="filteredRooms.length === 0"
+                class="text-center py-12 text-slate-500"
+              >
+                <span class="material-symbols-outlined text-4xl mb-2 block"
+                  >meeting_room</span
+                >
+                Henüz oda oluşturmadınız
+              </div>
+            </div>
+
+            <!-- Desktop Table -->
             <div
-              class="overflow-hidden rounded-xl border border-slate-800 bg-[#161f2b]"
+              class="hidden md:block overflow-hidden rounded-xl border border-border-dark bg-surface-dark"
             >
               <table class="w-full text-left text-sm text-slate-400">
                 <thead
-                  class="border-b border-slate-800 bg-[#1c2635] text-xs uppercase"
+                  class="border-b border-border-dark bg-background-dark text-xs uppercase"
                 >
                   <tr>
                     <th class="px-6 py-4 font-semibold">Oda Adı</th>
@@ -283,13 +393,13 @@ endblock %} {% block content %}
                     <th class="px-6 py-4 font-semibold text-right">İşlemler</th>
                   </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-800">
+                <tbody class="divide-y divide-border-dark">
                   <template x-for="room in filteredRooms" :key="room.id">
-                    <tr class="hover:bg-[#1e2a3b]">
+                    <tr class="hover:bg-surface-hover">
                       <td class="px-6 py-4">
                         <div class="flex items-center gap-3">
                           <div
-                            class="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-900/30 text-primary"
+                            class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"
                           >
                             <span class="material-symbols-outlined"
                               >videocam</span
@@ -368,23 +478,91 @@ endblock %} {% block content %}
       <!-- USERS TAB -->
       <template x-if="activeTab === 'users' && isAdmin">
         <div class="flex flex-col gap-6">
-          <div class="flex items-center justify-between">
-            <h2 class="text-2xl font-bold text-white">Kullanıcı Yönetimi</h2>
+          <!-- Header -->
+          <div
+            class="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+          >
+            <h2 class="text-xl md:text-2xl font-bold text-white">
+              Kullanıcı Yönetimi
+            </h2>
             <button
               @click="showAddUserModal = true"
-              class="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700"
+              class="flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-green-700 active:scale-95 transition-all"
             >
               <span class="material-symbols-outlined text-[18px]"
                 >person_add</span
-              >Yeni Kullanıcı Ekle
+              >
+              <span>Yeni Kullanıcı</span>
             </button>
           </div>
+
+          <!-- Mobile Cards -->
+          <div class="flex flex-col gap-3 md:hidden">
+            <template x-for="u in users" :key="u.id">
+              <div
+                class="rounded-xl bg-surface-dark border border-border-dark p-4"
+              >
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <div
+                      class="h-10 w-10 rounded-full flex items-center justify-center text-white font-bold shrink-0"
+                      :class="u.role === 'admin' ? 'bg-orange-500' : 'bg-primary'"
+                    >
+                      <span x-text="u.username.charAt(0).toUpperCase()"></span>
+                    </div>
+                    <div class="min-w-0">
+                      <div
+                        class="font-medium text-white truncate"
+                        x-text="u.username"
+                      ></div>
+                      <div
+                        class="text-xs text-slate-400 truncate"
+                        x-text="u.email"
+                      ></div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span
+                      x-show="u.role === 'admin'"
+                      class="inline-flex items-center rounded-full bg-orange-500/10 px-2 py-0.5 text-xs font-medium text-orange-400"
+                      >Admin</span
+                    >
+                    <span
+                      x-show="u.role === 'user'"
+                      class="inline-flex items-center rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-400"
+                      >Kullanıcı</span
+                    >
+                    <button
+                      x-show="u.role !== 'admin'"
+                      @click="deleteUser(u.id, u.username)"
+                      class="p-2 text-red-400 hover:text-red-300 active:scale-95"
+                    >
+                      <span class="material-symbols-outlined text-[18px]"
+                        >delete</span
+                      >
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <div
+              x-show="users.length === 0"
+              class="text-center py-12 text-slate-500"
+            >
+              <span class="material-symbols-outlined text-4xl mb-2 block"
+                >group</span
+              >
+              Henüz kullanıcı yok
+            </div>
+          </div>
+
+          <!-- Desktop Table -->
           <div
-            class="overflow-hidden rounded-xl border border-slate-800 bg-[#161f2b]"
+            class="hidden md:block overflow-hidden rounded-xl border border-border-dark bg-surface-dark"
           >
             <table class="w-full text-left text-sm text-slate-400">
               <thead
-                class="border-b border-slate-800 bg-[#1c2635] text-xs uppercase"
+                class="border-b border-border-dark bg-background-dark text-xs uppercase"
               >
                 <tr>
                   <th class="px-6 py-4 font-semibold">Kullanıcı</th>
@@ -393,9 +571,9 @@ endblock %} {% block content %}
                   <th class="px-6 py-4 font-semibold text-right">İşlemler</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-slate-800">
+              <tbody class="divide-y divide-border-dark">
                 <template x-for="u in users" :key="u.id">
-                  <tr class="hover:bg-[#1e2a3b]">
+                  <tr class="hover:bg-surface-hover">
                     <td class="px-6 py-4">
                       <div class="flex items-center gap-3">
                         <div
@@ -454,10 +632,13 @@ endblock %} {% block content %}
   >
     <div
       @click.away="showCreateModal = false"
-      class="w-full max-w-md bg-[#1b2431] rounded-xl border border-slate-800 shadow-2xl"
+      class="w-full max-w-md bg-surface-dark rounded-xl border border-border-dark shadow-2xl"
     >
       <div class="p-6">
-        <h3 class="text-xl font-bold mb-4 text-white">Yeni Oda Oluştur</h3>
+        <h3 class="text-xl font-bold mb-4 flex items-center gap-2 text-white">
+          <span class="material-symbols-outlined text-primary">video_call</span>
+          Yeni Oda Oluştur
+        </h3>
         <form @submit.prevent="createRoom">
           <div class="flex flex-col gap-4">
             <div>
@@ -469,7 +650,7 @@ endblock %} {% block content %}
                 type="text"
                 placeholder="Örn: Haftalık Toplantı"
                 required
-                class="w-full rounded-lg border border-slate-700 bg-[#111822] px-4 py-3 text-white placeholder-slate-500 focus:border-primary focus:ring-primary"
+                class="w-full rounded-lg border border-border-dark bg-background-dark px-4 py-3 text-white placeholder-slate-500 focus:border-primary focus:ring-primary"
               />
             </div>
             <div>
@@ -478,7 +659,7 @@ endblock %} {% block content %}
               >
               <select
                 x-model="newRoomMaxViewers"
-                class="w-full rounded-lg border border-slate-700 bg-[#111822] px-4 py-3 text-white focus:border-primary focus:ring-primary"
+                class="w-full rounded-lg border border-border-dark bg-background-dark px-4 py-3 text-white focus:border-primary focus:ring-primary"
               >
                 <option value="1">1</option>
                 <option value="2">2</option>
@@ -490,7 +671,7 @@ endblock %} {% block content %}
             <button
               type="button"
               @click="showCreateModal = false"
-              class="flex-1 px-4 py-3 rounded-lg border border-slate-700 text-slate-400 hover:bg-[#233348]"
+              class="flex-1 px-4 py-3 rounded-lg border border-border-dark text-slate-400 hover:bg-surface-hover"
             >
               İptal
             </button>
@@ -517,7 +698,7 @@ endblock %} {% block content %}
   >
     <div
       @click.away="showAddUserModal = false"
-      class="w-full max-w-md bg-[#1b2431] rounded-xl border border-slate-800 shadow-2xl"
+      class="w-full max-w-md bg-surface-dark rounded-xl border border-border-dark shadow-2xl"
     >
       <div class="p-6">
         <h3 class="text-xl font-bold mb-4 flex items-center gap-2 text-white">
@@ -542,7 +723,7 @@ endblock %} {% block content %}
                 type="text"
                 placeholder="kullanici_adi"
                 required
-                class="w-full rounded-lg border border-slate-700 bg-[#111822] px-4 py-3 text-white placeholder-slate-500 focus:border-primary focus:ring-primary"
+                class="w-full rounded-lg border border-border-dark bg-background-dark px-4 py-3 text-white placeholder-slate-500 focus:border-primary focus:ring-primary"
               />
             </div>
             <div>
@@ -554,7 +735,7 @@ endblock %} {% block content %}
                 type="email"
                 placeholder="kullanici@sirket.com"
                 required
-                class="w-full rounded-lg border border-slate-700 bg-[#111822] px-4 py-3 text-white placeholder-slate-500 focus:border-primary focus:ring-primary"
+                class="w-full rounded-lg border border-border-dark bg-background-dark px-4 py-3 text-white placeholder-slate-500 focus:border-primary focus:ring-primary"
               />
             </div>
             <div>
@@ -567,7 +748,7 @@ endblock %} {% block content %}
                 placeholder="En az 6 karakter"
                 required
                 minlength="6"
-                class="w-full rounded-lg border border-slate-700 bg-[#111822] px-4 py-3 text-white placeholder-slate-500 focus:border-primary focus:ring-primary"
+                class="w-full rounded-lg border border-border-dark bg-background-dark px-4 py-3 text-white placeholder-slate-500 focus:border-primary focus:ring-primary"
                 autocomplete="new-password"
               />
             </div>
@@ -576,7 +757,7 @@ endblock %} {% block content %}
             <button
               type="button"
               @click="showAddUserModal = false; addUserError = ''"
-              class="flex-1 px-4 py-3 rounded-lg border border-slate-700 text-slate-400 hover:bg-[#233348]"
+              class="flex-1 px-4 py-3 rounded-lg border border-border-dark text-slate-400 hover:bg-surface-hover"
             >
               İptal
             </button>
@@ -594,6 +775,72 @@ endblock %} {% block content %}
       </div>
     </div>
   </div>
+
+  <!-- Mobile Bottom Navigation -->
+  <nav
+    class="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-surface-dark/95 backdrop-blur-lg border-t border-border-dark safe-area-bottom"
+  >
+    <div class="flex items-center justify-around h-16">
+      <button
+        @click="activeTab = 'rooms'"
+        class="flex flex-col items-center justify-center gap-1 flex-1 h-full"
+        :class="activeTab === 'rooms' ? 'text-primary' : 'text-slate-400'"
+      >
+        <span
+          class="material-symbols-outlined text-[22px]"
+          :class="activeTab === 'rooms' ? 'fill' : ''"
+          >dashboard</span
+        >
+        <span class="text-[10px] font-medium">Panel</span>
+      </button>
+      <a
+        href="/mindmap"
+        class="flex flex-col items-center justify-center gap-1 flex-1 h-full text-slate-400"
+      >
+        <span class="material-symbols-outlined text-[22px]">account_tree</span>
+        <span class="text-[10px] font-medium">Mindmap</span>
+      </a>
+      <button
+        @click="showCreateModal = true"
+        class="flex items-center justify-center -mt-4"
+      >
+        <div
+          class="flex items-center justify-center w-14 h-14 rounded-full bg-primary shadow-lg shadow-primary/30"
+        >
+          <span class="material-symbols-outlined text-white text-[26px]"
+            >add</span
+          >
+        </div>
+      </button>
+      <template x-if="isAdmin">
+        <button
+          @click="activeTab = 'users'"
+          class="flex flex-col items-center justify-center gap-1 flex-1 h-full"
+          :class="activeTab === 'users' ? 'text-orange-400' : 'text-slate-400'"
+        >
+          <span class="material-symbols-outlined text-[22px]"
+            >admin_panel_settings</span
+          >
+          <span class="text-[10px] font-medium">Kullanıcılar</span>
+        </button>
+      </template>
+      <template x-if="!isAdmin">
+        <button
+          class="flex flex-col items-center justify-center gap-1 flex-1 h-full text-slate-400"
+        >
+          <span class="material-symbols-outlined text-[22px]">settings</span>
+          <span class="text-[10px] font-medium">Ayarlar</span>
+        </button>
+      </template>
+      <button
+        @click="logout()"
+        class="flex flex-col items-center justify-center gap-1 flex-1 h-full text-slate-400"
+      >
+        <span class="material-symbols-outlined text-[22px]">logout</span>
+        <span class="text-[10px] font-medium">Çıkış</span>
+      </button>
+    </div>
+  </nav>
 </div>
 
 <script>
