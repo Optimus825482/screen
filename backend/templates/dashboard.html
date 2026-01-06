@@ -1013,6 +1013,7 @@ endblock %} {% block content %}
       addUserError: "",
       stats: { totalMeetings: 0, avgDuration: 45, activeRooms: 0 },
       activeUsersInterval: null,
+      heartbeatInterval: null,
 
       get filteredRooms() {
         if (!this.searchQuery) return this.rooms;
@@ -1040,6 +1041,20 @@ endblock %} {% block content %}
         this.activeUsersInterval = setInterval(() => {
           this.loadActiveUsers();
         }, 10000);
+
+        // Heartbeat gönder (her 15 saniyede)
+        this.sendHeartbeat();
+        this.heartbeatInterval = setInterval(() => {
+          this.sendHeartbeat();
+        }, 15000);
+      },
+
+      async sendHeartbeat() {
+        try {
+          await Auth.fetchWithAuth("/api/rooms/heartbeat", { method: "POST" });
+        } catch (e) {
+          // Sessizce başarısız ol
+        }
       },
 
       async loadActiveUsers() {

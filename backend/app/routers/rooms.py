@@ -18,30 +18,61 @@ router = APIRouter(prefix="/api/rooms", tags=["Rooms"])
 # guest_token -> {room_id, guest_name, created_at}
 guest_sessions: dict = {}
 
+# Aktif kullanıcı takibi (heartbeat bazlı)
+# user_id -> {username, last_seen, location}
+active_users: dict = {}
+HEARTBEAT_TIMEOUT = 30  # 30 saniye içinde heartbeat gelmezse offline say
+
+
+@router.post("/heartbeat")
+async def heartbeat(current_user: User = Depends(get_current_user)):
+    """Kullanıcının aktif olduğunu bildir"""
+    import time
+    active_users[str(current_user.id)] = {
+        "user_id": str(current_user.id),
+        "username": current_user.username,
+        "last_seen": time.time(),
+        "is_guest": False
+    }
+    return {"status": "ok"}
+
 
 @router.get("/active-users")
 async def get_active_users(current_user: User = Depends(get_current_user)):
     """
-    Tüm odalardaki aktif kullanıcıları döner.
-    WebSocket connection manager'dan canlı veri çeker.
+    Tüm aktif kullanıcıları döner.
+    Heartbeat bazlı + WebSocket bağlantıları birleştirilir.
     """
+    import time
     from app.routers.websocket import manager
     
-    active_users = []
+    now = time.time()
+    result_users = {}
+    
+    # 1. Heartbeat bazlı aktif kullanıcılar (timeout kontrolü)
+    for user_id, data in list(active_users.items()):
+        if now - data["last_seen"] < HEARTBEAT_TIMEOUT:
+            result_users[user_id] = data
+        else:
+            # Timeout olmuş, sil
+            del active_users[user_id]
+    
+    # 2. WebSocket'e bağlı kullanıcılar (odalarda olanlar)
     for room_id, users in manager.rooms.items():
         for user_id in users.keys():
-            username = manager.usernames.get(user_id, "Bilinmiyor")
-            is_guest = manager.guests.get(user_id, False)
-            active_users.append({
-                "user_id": user_id,
-                "username": username,
-                "room_id": room_id,
-                "is_guest": is_guest
-            })
+            if user_id not in result_users:
+                username = manager.usernames.get(user_id, "Bilinmiyor")
+                is_guest = manager.guests.get(user_id, False)
+                result_users[user_id] = {
+                    "user_id": user_id,
+                    "username": username,
+                    "room_id": room_id,
+                    "is_guest": is_guest
+                }
     
     return {
-        "total_active": len(active_users),
-        "users": active_users
+        "total_active": len(result_users),
+        "users": list(result_users.values())
     }
 
 
