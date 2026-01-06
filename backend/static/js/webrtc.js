@@ -514,6 +514,7 @@ class WebRTCManager {
 
   async addAudioTrack() {
     try {
+      // Mikrofon izni al
       const audioStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -523,8 +524,10 @@ class WebRTCManager {
       });
       const audioTrack = audioStream.getAudioTracks()[0];
 
-      // localStream varsa (presenter) track ekle
-      if (this.localStream) {
+      // CASE 1: Presenter (ekran/kamera paylaşan kişi)
+      if (this.localStream && (this.isScreenSharing || this.isCameraSharing)) {
+        console.log("Adding audio to presenter stream");
+
         // Mevcut audio track varsa kaldır
         const existingAudio = this.localStream.getAudioTracks()[0];
         if (existingAudio) {
@@ -535,20 +538,44 @@ class WebRTCManager {
 
         // Mevcut peer connection'lara audio track ekle/güncelle
         for (const [userId, pc] of this.peerConnections) {
-          const sender = pc.getSenders().find((s) => s.track?.kind === "audio");
-          if (sender) {
-            await sender.replaceTrack(audioTrack);
-          } else {
-            pc.addTrack(audioTrack, this.localStream);
+          try {
+            const sender = pc
+              .getSenders()
+              .find((s) => s.track?.kind === "audio");
+            if (sender) {
+              await sender.replaceTrack(audioTrack);
+            } else {
+              pc.addTrack(audioTrack, this.localStream);
+            }
+          } catch (e) {
+            console.warn(`Failed to add audio to peer ${userId}:`, e);
           }
         }
-      } else {
-        // Viewer için: audioStream'i sakla ve ayrı bir bağlantı kur
-        this.audioStream = audioStream;
-        // Viewer audio için presenter'a offer gönder
-        await this.sendViewerAudioOffer(audioTrack, audioStream);
+
+        this.isMuted = false;
+        return audioTrack;
       }
 
+      // CASE 2: Viewer (izleyici) - Presenter'a ses göndermek istiyor
+      if (this.currentPresenterId) {
+        console.log(
+          "Viewer sending audio to presenter:",
+          this.currentPresenterId
+        );
+
+        // audioStream'i sakla
+        this.audioStream = audioStream;
+
+        // Viewer audio için ayrı peer connection oluştur
+        await this.setupViewerAudioConnection(audioTrack, audioStream);
+
+        this.isMuted = false;
+        return audioTrack;
+      }
+
+      // CASE 3: Hiçbir paylaşım yok, sadece mikrofon aç (standalone)
+      console.log("Standalone audio mode - no active share");
+      this.audioStream = audioStream;
       this.isMuted = false;
       return audioTrack;
     } catch (error) {
@@ -557,14 +584,14 @@ class WebRTCManager {
     }
   }
 
-  // Viewer'ın ses göndermesi için ayrı peer connection
-  async sendViewerAudioOffer(audioTrack, audioStream) {
-    if (!this.currentPresenterId) {
-      console.warn("No presenter to send audio to");
-      return;
+  // Viewer için ayrı audio peer connection
+  async setupViewerAudioConnection(audioTrack, audioStream) {
+    // Eski bağlantı varsa kapat
+    if (this.viewerAudioPc) {
+      this.viewerAudioPc.close();
+      this.viewerAudioPc = null;
     }
 
-    // Viewer audio için ayrı peer connection oluştur
     const pc = new RTCPeerConnection(this.config);
     this.viewerAudioPc = pc;
 
@@ -580,9 +607,12 @@ class WebRTCManager {
 
     pc.onconnectionstatechange = () => {
       console.log("Viewer audio connection state:", pc.connectionState);
+      if (pc.connectionState === "failed") {
+        console.error("Viewer audio connection failed");
+      }
     };
 
-    // Audio track'i ekle
+    // Audio track'i ekle - audioStream ile birlikte
     pc.addTrack(audioTrack, audioStream);
 
     // Offer oluştur ve gönder
