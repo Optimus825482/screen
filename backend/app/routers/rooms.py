@@ -240,16 +240,31 @@ async def join_room_by_code(
 
 
 @router.delete("/{room_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def end_room(
+async def delete_room(
     room_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    """Odayı kalıcı olarak sil (sadece host veya admin)"""
     room_service = RoomService(db)
-    success = await room_service.end_room(room_id, current_user.id)
+    room = await room_service.get_room_by_id(room_id)
     
-    if not success:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bu odayı sonlandırma yetkiniz yok")
+    if not room:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Oda bulunamadı")
+    
+    # Sadece host veya admin silebilir
+    is_admin = current_user.role == "admin"
+    is_host = room.host_id == current_user.id
+    
+    if not is_host and not is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bu odayı silme yetkiniz yok")
+    
+    # Aktif odayı silmeye çalışıyorsa önce sonlandır
+    if room.status == "active":
+        await room_service.end_room(room_id, current_user.id)
+    
+    # Odayı sil
+    await room_service.delete_room(room_id)
 
 
 @router.post("/{room_id}/leave", status_code=status.HTTP_204_NO_CONTENT)

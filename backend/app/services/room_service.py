@@ -132,3 +132,20 @@ class RoomService:
         if not room or room.host_id != host_id:
             return False
         return await self.leave_room(room_id, user_id)
+
+    async def delete_room(self, room_id: UUID) -> bool:
+        """Odayı ve ilişkili katılımcıları kalıcı olarak sil"""
+        # Önce katılımcıları sil
+        await self.db.execute(
+            RoomParticipant.__table__.delete().where(RoomParticipant.room_id == room_id)
+        )
+        # Sonra odayı sil
+        result = await self.db.execute(
+            select(Room).where(Room.id == room_id)
+        )
+        room = result.scalar_one_or_none()
+        if room:
+            await self.db.delete(room)
+            await self.db.flush()
+            return True
+        return False
