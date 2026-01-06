@@ -19,6 +19,32 @@ router = APIRouter(prefix="/api/rooms", tags=["Rooms"])
 guest_sessions: dict = {}
 
 
+@router.get("/active-users")
+async def get_active_users(current_user: User = Depends(get_current_user)):
+    """
+    Tüm odalardaki aktif kullanıcıları döner.
+    WebSocket connection manager'dan canlı veri çeker.
+    """
+    from app.routers.websocket import manager
+    
+    active_users = []
+    for room_id, users in manager.rooms.items():
+        for user_id in users.keys():
+            username = manager.usernames.get(user_id, "Bilinmiyor")
+            is_guest = manager.guests.get(user_id, False)
+            active_users.append({
+                "user_id": user_id,
+                "username": username,
+                "room_id": room_id,
+                "is_guest": is_guest
+            })
+    
+    return {
+        "total_active": len(active_users),
+        "users": active_users
+    }
+
+
 @router.get("/ice-config")
 async def get_ice_config(current_user: User = Depends(get_current_user)):
     """

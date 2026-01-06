@@ -300,6 +300,68 @@ endblock %} {% block content %}
             </div>
           </div>
 
+          <!-- Aktif Kullanıcılar Bölümü -->
+          <div x-show="activeUsers.length > 0" class="flex flex-col gap-3">
+            <div class="flex items-center justify-between px-1">
+              <h3
+                class="text-base font-bold text-white flex items-center gap-2"
+              >
+                <span class="relative flex h-2.5 w-2.5">
+                  <span
+                    class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
+                  ></span>
+                  <span
+                    class="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"
+                  ></span>
+                </span>
+                Şu An Aktif
+                <span
+                  class="text-sm font-normal text-slate-400"
+                  x-text="'(' + activeUsers.length + ' kişi)'"
+                ></span>
+              </h3>
+              <button
+                @click="loadActiveUsers()"
+                class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-surface-hover transition-all"
+                title="Yenile"
+              >
+                <span class="material-symbols-outlined text-[18px]"
+                  >refresh</span
+                >
+              </button>
+            </div>
+
+            <!-- Aktif Kullanıcı Kartları -->
+            <div class="flex flex-wrap gap-2">
+              <template x-for="au in activeUsers" :key="au.user_id">
+                <div
+                  class="flex items-center gap-2 rounded-full bg-surface-dark border border-border-dark px-3 py-1.5"
+                >
+                  <div
+                    class="h-6 w-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                    :class="au.is_guest ? 'bg-slate-600' : 'bg-primary'"
+                  >
+                    <span x-text="au.username.charAt(0).toUpperCase()"></span>
+                  </div>
+                  <span class="text-sm text-white" x-text="au.username"></span>
+                  <span
+                    x-show="au.is_guest"
+                    class="text-[10px] bg-slate-700 text-slate-400 px-1.5 py-0.5 rounded"
+                    >Misafir</span
+                  >
+                  <span class="relative flex h-2 w-2">
+                    <span
+                      class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
+                    ></span>
+                    <span
+                      class="relative inline-flex rounded-full h-2 w-2 bg-green-500"
+                    ></span>
+                  </span>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- Rooms List - Mobile Cards -->
           <div class="flex flex-col gap-3">
             <h3 class="text-base font-bold text-white px-1">Son Aktivite</h3>
@@ -849,6 +911,7 @@ endblock %} {% block content %}
       user: null,
       rooms: [],
       users: [],
+      activeUsers: [],
       isAdmin: false,
       activeTab: "rooms",
       showUserMenu: false,
@@ -863,6 +926,7 @@ endblock %} {% block content %}
       addingUser: false,
       addUserError: "",
       stats: { totalMeetings: 0, avgDuration: 45, activeRooms: 0 },
+      activeUsersInterval: null,
 
       get filteredRooms() {
         if (!this.searchQuery) return this.rooms;
@@ -883,7 +947,25 @@ endblock %} {% block content %}
           this.isAdmin = this.user?.role === "admin";
         }
         await this.loadRooms();
+        await this.loadActiveUsers();
         if (this.isAdmin) await this.loadUsers();
+
+        // Aktif kullanıcıları her 10 saniyede güncelle
+        this.activeUsersInterval = setInterval(() => {
+          this.loadActiveUsers();
+        }, 10000);
+      },
+
+      async loadActiveUsers() {
+        try {
+          const response = await Auth.fetchWithAuth("/api/rooms/active-users");
+          if (response && response.ok) {
+            const data = await response.json();
+            this.activeUsers = data.users || [];
+          }
+        } catch (e) {
+          console.error("Failed to load active users:", e);
+        }
       },
 
       async loadRooms() {
