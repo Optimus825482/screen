@@ -299,6 +299,11 @@ class WebRTCManager {
         window.location.href = "/dashboard";
         break;
 
+      case "viewer_audio_answer":
+        // Viewer olarak answer aldık
+        await this.handleViewerAudioAnswer(data.sdp);
+        break;
+
       case "viewer_audio_offer":
         // Viewer mikrofon açtı, host olarak answer ver
         if (this.isHost) {
@@ -510,22 +515,38 @@ class WebRTCManager {
   async addAudioTrack() {
     try {
       const audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
       const audioTrack = audioStream.getAudioTracks()[0];
 
+      // localStream varsa (presenter) track ekle
       if (this.localStream) {
-        this.localStream.addTrack(audioTrack);
-      }
-
-      // Mevcut peer connection'lara audio track ekle
-      for (const [userId, pc] of this.peerConnections) {
-        const sender = pc.getSenders().find((s) => s.track?.kind === "audio");
-        if (sender) {
-          sender.replaceTrack(audioTrack);
-        } else {
-          pc.addTrack(audioTrack, this.localStream);
+        // Mevcut audio track varsa kaldır
+        const existingAudio = this.localStream.getAudioTracks()[0];
+        if (existingAudio) {
+          this.localStream.removeTrack(existingAudio);
+          existingAudio.stop();
         }
+        this.localStream.addTrack(audioTrack);
+
+        // Mevcut peer connection'lara audio track ekle/güncelle
+        for (const [userId, pc] of this.peerConnections) {
+          const sender = pc.getSenders().find((s) => s.track?.kind === "audio");
+          if (sender) {
+            await sender.replaceTrack(audioTrack);
+          } else {
+            pc.addTrack(audioTrack, this.localStream);
+          }
+        }
+      } else {
+        // Viewer için: audioStream'i sakla ve ayrı bir bağlantı kur
+        this.audioStream = audioStream;
+        // Viewer audio için presenter'a offer gönder
+        await this.sendViewerAudioOffer(audioTrack, audioStream);
       }
 
       this.isMuted = false;
@@ -536,13 +557,89 @@ class WebRTCManager {
     }
   }
 
+  // Viewer'ın ses göndermesi için ayrı peer connection
+  async sendViewerAudioOffer(audioTrack, audioStream) {
+    if (!this.currentPresenterId) {
+      console.warn("No presenter to send audio to");
+      return;
+    }
+
+    // Viewer audio için ayrı peer connection oluştur
+    const pc = new RTCPeerConnection(this.config);
+    this.viewerAudioPc = pc;
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.send({
+          type: "ice_candidate",
+          target: this.currentPresenterId,
+          candidate: event.candidate,
+        });
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log("Viewer audio connection state:", pc.connectionState);
+    };
+
+    // Audio track'i ekle
+    pc.addTrack(audioTrack, audioStream);
+
+    // Offer oluştur ve gönder
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    this.send({
+      type: "viewer_audio_offer",
+      target: this.currentPresenterId,
+      sdp: pc.localDescription,
+    });
+
+    console.log("Viewer audio offer sent to presenter");
+  }
+
+  // Viewer audio answer'ı handle et
+  async handleViewerAudioAnswer(sdp) {
+    if (this.viewerAudioPc) {
+      await this.viewerAudioPc.setRemoteDescription(
+        new RTCSessionDescription(sdp)
+      );
+      console.log("Viewer audio answer received and set");
+    }
+  }
+
+  // Viewer audio'yu durdur
+  stopViewerAudio() {
+    if (this.audioStream) {
+      this.audioStream.getTracks().forEach((track) => track.stop());
+      this.audioStream = null;
+    }
+    if (this.viewerAudioPc) {
+      this.viewerAudioPc.close();
+      this.viewerAudioPc = null;
+    }
+    // Presenter'a bildir
+    if (this.currentPresenterId) {
+      this.send({ type: "viewer_audio_stopped" });
+    }
+  }
+
   toggleMute() {
+    // Presenter için: localStream'deki audio track'i toggle et
     if (this.localStream) {
       const audioTracks = this.localStream.getAudioTracks();
       audioTracks.forEach((track) => {
         track.enabled = !track.enabled;
       });
-      this.isMuted = !this.isMuted;
+      this.isMuted = audioTracks.length > 0 ? !audioTracks[0].enabled : true;
+    }
+    // Viewer için: audioStream'deki audio track'i toggle et
+    else if (this.audioStream) {
+      const audioTracks = this.audioStream.getAudioTracks();
+      audioTracks.forEach((track) => {
+        track.enabled = !track.enabled;
+      });
+      this.isMuted = audioTracks.length > 0 ? !audioTracks[0].enabled : true;
     }
     return this.isMuted;
   }
@@ -765,6 +862,7 @@ class WebRTCManager {
   disconnect() {
     this.stopPingInterval();
     this.stopScreenShare();
+    this.stopViewerAudio(); // Viewer audio'yu temizle
 
     for (const [userId] of this.peerConnections) {
       this.closePeerConnection(userId);
