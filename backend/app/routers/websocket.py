@@ -24,11 +24,17 @@ class ConnectionManager:
         self.guests: Dict[str, bool] = {}
         # user_id -> guest_token (for cleanup)
         self.guest_tokens: Dict[str, str] = {}
+        # room_id -> {presenter_id -> {share_type, username}} (max 2 presenter)
+        self.presenters: Dict[str, Dict[str, dict]] = {}
+        # room_id -> [shared_files]
+        self.shared_files: Dict[str, list] = {}
     
     async def connect(self, websocket: WebSocket, room_id: str, user_id: str, username: str, is_guest: bool = False, guest_token: str = None):
         await websocket.accept()
         if room_id not in self.rooms:
             self.rooms[room_id] = {}
+            self.presenters[room_id] = {}
+            self.shared_files[room_id] = []
         self.rooms[room_id][user_id] = websocket
         self.usernames[user_id] = username
         self.guests[user_id] = is_guest
@@ -40,6 +46,13 @@ class ConnectionManager:
             del self.rooms[room_id][user_id]
             if not self.rooms[room_id]:
                 del self.rooms[room_id]
+                if room_id in self.presenters:
+                    del self.presenters[room_id]
+                if room_id in self.shared_files:
+                    del self.shared_files[room_id]
+        # Presenter listesinden çıkar
+        if room_id in self.presenters and user_id in self.presenters[room_id]:
+            del self.presenters[room_id][user_id]
         if user_id in self.usernames:
             del self.usernames[user_id]
         if user_id in self.guests:
@@ -48,6 +61,34 @@ class ConnectionManager:
         if user_id in self.guest_tokens:
             remove_guest_session(self.guest_tokens[user_id])
             del self.guest_tokens[user_id]
+    
+    def add_presenter(self, room_id: str, user_id: str, username: str, share_type: str) -> bool:
+        """Presenter ekle, max 2 presenter kontrolü yapar"""
+        if room_id not in self.presenters:
+            self.presenters[room_id] = {}
+        if len(self.presenters[room_id]) >= 2 and user_id not in self.presenters[room_id]:
+            return False  # Max 2 presenter
+        self.presenters[room_id][user_id] = {"username": username, "share_type": share_type}
+        return True
+    
+    def remove_presenter(self, room_id: str, user_id: str):
+        """Presenter'ı kaldır"""
+        if room_id in self.presenters and user_id in self.presenters[room_id]:
+            del self.presenters[room_id][user_id]
+    
+    def get_presenters(self, room_id: str) -> dict:
+        """Odadaki presenter'ları döndür"""
+        return self.presenters.get(room_id, {})
+    
+    def add_shared_file(self, room_id: str, file_info: dict):
+        """Paylaşılan dosya ekle"""
+        if room_id not in self.shared_files:
+            self.shared_files[room_id] = []
+        self.shared_files[room_id].append(file_info)
+    
+    def get_shared_files(self, room_id: str) -> list:
+        """Paylaşılan dosyaları döndür"""
+        return self.shared_files.get(room_id, [])
     
     async def send_personal(self, message: dict, websocket: WebSocket):
         await websocket.send_json(message)
@@ -156,7 +197,9 @@ async def websocket_room(
             "host_id": str(room.host_id),
             "is_host": is_host,
             "is_guest": is_guest,
-            "participants": manager.get_room_users(room_id)
+            "participants": manager.get_room_users(room_id),
+            "presenters": manager.get_presenters(room_id),
+            "shared_files": manager.get_shared_files(room_id)
         }, websocket)
         
         try:
@@ -232,21 +275,65 @@ async def websocket_room(
                         }, exclude_user=user_id)
                 
                 elif msg_type == "screen_share_started":
-                    # Biri ekran/kamera paylaşımı başlattı
-                    share_type = data.get("share_type", "screen")  # 'screen' veya 'camera'
-                    await manager.broadcast_to_room(room_id, {
-                        "type": "screen_share_started",
-                        "presenter_id": user_id,
-                        "presenter_name": username,
-                        "share_type": share_type
-                    }, exclude_user=user_id)
+                    # Biri ekran/kamera paylaşımı başlattı (max 2 presenter)
+                    share_type = data.get("share_type", "screen")
+                    
+                    # Presenter ekle (max 2 kontrolü)
+                    if manager.add_presenter(room_id, user_id, username, share_type):
+                        await manager.broadcast_to_room(room_id, {
+                            "type": "screen_share_started",
+                            "presenter_id": user_id,
+                            "presenter_name": username,
+                            "share_type": share_type,
+                            "presenters": manager.get_presenters(room_id)
+                        }, exclude_user=user_id)
+                    else:
+                        # Max presenter'a ulaşıldı
+                        await manager.send_personal({
+                            "type": "error",
+                            "message": "Maksimum 2 kişi aynı anda ekran paylaşabilir"
+                        }, websocket)
                 
                 elif msg_type == "screen_share_stopped":
                     # Paylaşım durduruldu
+                    manager.remove_presenter(room_id, user_id)
                     await manager.broadcast_to_room(room_id, {
                         "type": "screen_share_stopped",
-                        "presenter_id": user_id
+                        "presenter_id": user_id,
+                        "presenters": manager.get_presenters(room_id)
                     }, exclude_user=user_id)
+                
+                elif msg_type == "annotation":
+                    # Ekran üzerine çizim/işaretleme
+                    await manager.broadcast_to_room(room_id, {
+                        "type": "annotation",
+                        "user_id": user_id,
+                        "username": username,
+                        "target_presenter": data.get("target_presenter"),  # Hangi ekrana çiziliyor
+                        "tool": data.get("tool"),  # pen, laser, highlight, eraser
+                        "color": data.get("color"),
+                        "size": data.get("size"),
+                        "points": data.get("points"),  # [{x, y}, ...]
+                        "action": data.get("action")  # start, move, end, clear
+                    }, exclude_user=user_id)
+                
+                elif msg_type == "file_share":
+                    # Dosya paylaşımı
+                    file_info = {
+                        "id": data.get("file_id"),
+                        "name": data.get("file_name"),
+                        "size": data.get("file_size"),
+                        "type": data.get("file_type"),
+                        "data": data.get("file_data"),  # Base64 encoded
+                        "sender_id": user_id,
+                        "sender_name": username,
+                        "timestamp": data.get("timestamp")
+                    }
+                    manager.add_shared_file(room_id, file_info)
+                    await manager.broadcast_to_room(room_id, {
+                        "type": "file_shared",
+                        **file_info
+                    })
                 
                 elif msg_type == "viewer_audio_offer":
                     # Viewer (guest) mikrofon açtı, host'a offer gönder

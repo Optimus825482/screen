@@ -1,4 +1,5 @@
 // WebRTC Manager - Ekran paylaşımı, kamera paylaşımı ve ses iletimi
+// V2: Çoklu presenter, annotation, dosya paylaşımı desteği
 class WebRTCManager {
   constructor(roomId, isHost) {
     this.roomId = roomId;
@@ -6,25 +7,39 @@ class WebRTCManager {
     this.localStream = null;
     this.peerConnections = new Map(); // userId -> RTCPeerConnection
     this.viewerAudioConnections = new Map(); // userId -> RTCPeerConnection (viewer audio için)
+    this.remoteStreams = new Map(); // presenterId -> MediaStream (çoklu presenter için)
     this.ws = null;
-    this.onRemoteStream = null;
-    this.onViewerAudio = null; // Viewer'dan gelen ses için callback
+
+    // Callbacks
+    this.onRemoteStream = null; // Eski: tek stream
+    this.onRemoteStreams = null; // Yeni: çoklu stream {presenterId -> stream}
+    this.onViewerAudio = null;
     this.onParticipantUpdate = null;
     this.onChatMessage = null;
     this.onConnectionStateChange = null;
-    this.onPresenterChange = null; // Yeni: Presenter değiştiğinde callback
-    this.onWhiteboardDraw = null; // Whiteboard çizim callback
-    this.onWhiteboardClear = null; // Whiteboard temizleme callback
-    this.onWhiteboardStarted = null; // Whiteboard başladı callback
-    this.onWhiteboardStopped = null; // Whiteboard durdu callback
+    this.onPresenterChange = null;
+    this.onPresentersUpdate = null; // Yeni: Tüm presenter listesi güncellendiğinde
+    this.onAnnotation = null; // Yeni: Annotation callback
+    this.onFileShared = null; // Yeni: Dosya paylaşıldığında
+    this.onError = null; // Yeni: Hata callback
+    this.onWhiteboardDraw = null;
+    this.onWhiteboardClear = null;
+    this.onWhiteboardStarted = null;
+    this.onWhiteboardStopped = null;
+
+    // State
     this.isScreenSharing = false;
-    this.isCameraSharing = false; // Kamera paylaşımı durumu
-    this.currentFacingMode = "user"; // 'user' = ön kamera, 'environment' = arka kamera
+    this.isCameraSharing = false;
+    this.currentFacingMode = "user";
     this.isMuted = true;
-    this.currentPresenterId = null; // Şu an kim paylaşıyor
-    this.currentPresenterName = null;
-    this.currentShareType = null; // 'screen' veya 'camera'
     this.myUserId = null;
+
+    // Çoklu presenter desteği
+    this.presenters = {}; // {presenterId: {username, share_type}}
+    this.maxPresenters = 2;
+
+    // Dosya paylaşımı
+    this.sharedFiles = [];
 
     // Metered TURN Server config (API'den güncellenecek)
     this.config = {
@@ -145,6 +160,20 @@ class WebRTCManager {
         this.myUserId = data.participants.find(
           (p) => p.username === data.room_name
         )?.user_id;
+
+        // Mevcut presenter'ları yükle
+        if (data.presenters) {
+          this.presenters = data.presenters;
+          if (this.onPresentersUpdate) {
+            this.onPresentersUpdate(this.presenters);
+          }
+        }
+
+        // Paylaşılan dosyaları yükle
+        if (data.shared_files) {
+          this.sharedFiles = data.shared_files;
+        }
+
         // Mevcut kullanıcılar için peer connection oluştur
         for (const participant of data.participants) {
           if (
@@ -152,6 +181,13 @@ class WebRTCManager {
             !this.peerConnections.has(participant.user_id)
           ) {
             this.createPeerConnection(participant.user_id);
+          }
+        }
+
+        // Mevcut presenter'lardan offer iste
+        for (const presenterId of Object.keys(this.presenters)) {
+          if (presenterId !== this.myUserId) {
+            this.send({ type: "request_offer", target: presenterId });
           }
         }
         break;
@@ -175,13 +211,14 @@ class WebRTCManager {
         if (this.onParticipantUpdate) {
           this.onParticipantUpdate(data.participants, data);
         }
-        // Ayrılan kişi presenter ise temizle
-        if (data.user_id === this.currentPresenterId) {
-          this.currentPresenterId = null;
-          this.currentPresenterName = null;
-          if (this.onPresenterChange) {
-            this.onPresenterChange(null, null);
+        // Ayrılan kişi presenter ise listeden çıkar
+        if (this.presenters[data.user_id]) {
+          delete this.presenters[data.user_id];
+          this.remoteStreams.delete(data.user_id);
+          if (this.onPresentersUpdate) {
+            this.onPresentersUpdate(this.presenters);
           }
+          // Remote stream'i temizle
           if (this.onRemoteStream) {
             this.onRemoteStream(null);
           }
@@ -213,49 +250,92 @@ class WebRTCManager {
         break;
 
       case "screen_share_started":
-        // Birisi ekran/kamera paylaşımı başlattı
-        this.currentPresenterId = data.presenter_id;
-        this.currentPresenterName = data.presenter_name;
-        this.currentShareType = data.share_type || "screen";
+        // Birisi ekran/kamera paylaşımı başlattı (çoklu presenter desteği)
         console.log(
           "Screen share started by:",
           data.presenter_name,
           "type:",
-          this.currentShareType
+          data.share_type
         );
 
+        // Presenter listesini güncelle
+        if (data.presenters) {
+          this.presenters = data.presenters;
+        } else {
+          this.presenters[data.presenter_id] = {
+            username: data.presenter_name,
+            share_type: data.share_type || "screen",
+          };
+        }
+
+        // Callbacks
+        if (this.onPresentersUpdate) {
+          this.onPresentersUpdate(this.presenters);
+        }
         if (this.onPresenterChange) {
           this.onPresenterChange(
             data.presenter_id,
             data.presenter_name,
-            this.currentShareType
+            data.share_type
           );
         }
+
         // Presenter için peer connection oluştur (yoksa)
         if (!this.peerConnections.has(data.presenter_id)) {
-          console.log(
-            "Creating peer connection for presenter:",
-            data.presenter_id
-          );
           this.createPeerConnection(data.presenter_id);
         }
+
         // Presenter'dan offer iste (biz paylaşmıyorsak)
         if (!this.isScreenSharing && !this.isCameraSharing) {
-          console.log("Requesting offer from presenter:", data.presenter_id);
           this.send({ type: "request_offer", target: data.presenter_id });
         }
         break;
 
       case "screen_share_stopped":
         // Paylaşım durduruldu
-        this.currentPresenterId = null;
-        this.currentPresenterName = null;
-        this.currentShareType = null;
-        if (this.onPresenterChange) {
-          this.onPresenterChange(null, null, null);
+        console.log("Screen share stopped by:", data.presenter_id);
+
+        // Presenter listesini güncelle
+        if (data.presenters) {
+          this.presenters = data.presenters;
+        } else {
+          delete this.presenters[data.presenter_id];
         }
-        if (this.onRemoteStream) {
-          this.onRemoteStream(null);
+
+        // Remote stream'i kaldır
+        this.remoteStreams.delete(data.presenter_id);
+
+        // Callbacks
+        if (this.onPresentersUpdate) {
+          this.onPresentersUpdate(this.presenters);
+        }
+        if (this.onPresenterChange) {
+          this.onPresenterChange(data.presenter_id, null, null);
+        }
+        break;
+
+      case "error":
+        // Sunucudan hata mesajı
+        console.error("Server error:", data.message);
+        if (this.onError) {
+          this.onError(data.message);
+        } else {
+          alert(data.message);
+        }
+        break;
+
+      case "annotation":
+        // Ekran üzerine çizim/işaretleme
+        if (this.onAnnotation) {
+          this.onAnnotation(data);
+        }
+        break;
+
+      case "file_shared":
+        // Dosya paylaşıldı
+        this.sharedFiles.push(data);
+        if (this.onFileShared) {
+          this.onFileShared(data);
         }
         break;
 
@@ -334,13 +414,11 @@ class WebRTCManager {
   }
 
   async startScreenShare() {
-    // Başka biri paylaşıyorsa engelle
-    if (
-      this.currentPresenterId &&
-      !this.isScreenSharing &&
-      !this.isCameraSharing
-    ) {
-      throw new Error("Başka biri ekran paylaşıyor. Lütfen bekleyin.");
+    // Çoklu presenter kontrolü - maksimum 2 presenter
+    if (!this.canShare()) {
+      throw new Error(
+        "Maksimum presenter sayısına (2) ulaşıldı. Lütfen bekleyin."
+      );
     }
 
     try {
@@ -381,13 +459,11 @@ class WebRTCManager {
 
   // Mobil için kamera paylaşımı
   async startCameraShare(facingMode = "user") {
-    // Başka biri paylaşıyorsa engelle
-    if (
-      this.currentPresenterId &&
-      !this.isScreenSharing &&
-      !this.isCameraSharing
-    ) {
-      throw new Error("Başka biri paylaşım yapıyor. Lütfen bekleyin.");
+    // Çoklu presenter kontrolü - maksimum 2 presenter
+    if (!this.canShare()) {
+      throw new Error(
+        "Maksimum presenter sayısına (2) ulaşıldı. Lütfen bekleyin."
+      );
     }
 
     try {
@@ -858,11 +934,12 @@ class WebRTCManager {
     }
   }
 
-  // Başka biri paylaşıyor mu kontrol et
+  // Başka biri paylaşıyor mu kontrol et (çoklu presenter desteği)
   canShare() {
-    return (
-      !this.currentPresenterId || this.isScreenSharing || this.isCameraSharing
-    );
+    // Zaten paylaşıyorsak true
+    if (this.isScreenSharing || this.isCameraSharing) return true;
+    // Maksimum presenter sayısına ulaşılmadıysa true
+    return Object.keys(this.presenters).length < this.maxPresenters;
   }
 
   // Şu anki presenter bilgisi
@@ -871,6 +948,62 @@ class WebRTCManager {
       id: this.currentPresenterId,
       name: this.currentPresenterName,
     };
+  }
+
+  // Tüm presenter'ları getir
+  getPresenters() {
+    return this.presenters;
+  }
+
+  // Presenter sayısı
+  getPresenterCount() {
+    return Object.keys(this.presenters).length;
+  }
+
+  // Annotation gönder (ekran üzerine çizim)
+  sendAnnotation(annotationData) {
+    this.send({
+      type: "annotation",
+      tool: annotationData.tool, // pen, laser, highlight, eraser
+      color: annotationData.color,
+      size: annotationData.size,
+      fromX: annotationData.fromX,
+      fromY: annotationData.fromY,
+      toX: annotationData.toX,
+      toY: annotationData.toY,
+      presenterId: annotationData.presenterId, // Hangi presenter'ın ekranına çiziliyor
+    });
+  }
+
+  // Dosya paylaş
+  async shareFile(file) {
+    // Dosya boyutu kontrolü (max 10MB)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      throw new Error("Dosya boyutu 10MB'dan büyük olamaz");
+    }
+
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64Data = reader.result.split(",")[1];
+        this.send({
+          type: "file_share",
+          filename: file.name,
+          filesize: file.size,
+          filetype: file.type,
+          data: base64Data,
+        });
+        resolve();
+      };
+      reader.onerror = () => reject(new Error("Dosya okunamadı"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Paylaşılan dosyaları getir
+  getSharedFiles() {
+    return this.sharedFiles;
   }
 
   sendChatMessage(message) {

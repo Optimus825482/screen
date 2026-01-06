@@ -32,7 +32,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:8000", "http://127.0.0.1:8000"]
     
     # Room Settings
-    MAX_VIEWERS_PER_ROOM: int = 3
+    MAX_VIEWERS_PER_ROOM: int = 5  # Max 5 katılımcı (host dahil)
+    MAX_PRESENTERS_PER_ROOM: int = 2  # Max 2 kişi aynı anda ekran paylaşabilir
     
     # Public URL (dış erişim için)
     PUBLIC_URL: str = "http://localhost:8000"
