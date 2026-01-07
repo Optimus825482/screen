@@ -386,7 +386,7 @@
         <div
           x-show="getPresenterCount() > 0 || isScreenSharing || isCameraSharing"
           class="split-screen absolute inset-0 p-2"
-          :class="getPresenterCount() > 1 ? 'dual' : 'single'"
+          :class="(isScreenSharing || isCameraSharing) && remoteStream ? 'dual' : 'single'"
         >
           <!-- Local Video (kendi paylaşımım) -->
           <div
@@ -415,9 +415,9 @@
             </div>
           </div>
 
-          <!-- Remote Video (başkasının paylaşımı) -->
+          <!-- Remote Video (başkasının paylaşımı) - her zaman göster (stream varsa) -->
           <div
-            x-show="remoteStream && !isScreenSharing && !isCameraSharing"
+            x-show="remoteStream"
             class="presenter-video"
             :class="expandedPresenter === currentPresenterId ? 'expanded' : ''"
             @click="expandedPresenter = expandedPresenter === currentPresenterId ? null : currentPresenterId"
