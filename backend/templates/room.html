@@ -294,7 +294,7 @@
         <!-- Annotation Canvas (video üzerinde) -->
         <canvas
           x-ref="annotationCanvas"
-          x-show="(remoteStream || isScreenSharing || isCameraSharing) && showAnnotationTools"
+          x-show="remoteStream || isScreenSharing || isCameraSharing"
           @mousedown="startAnnotation($event)"
           @mousemove="annotate($event)"
           @mouseup="stopAnnotation()"
@@ -439,9 +439,9 @@
           </div>
         </div>
 
-        <!-- Waiting State - Kimse paylaşmıyor -->
+        <!-- Waiting State - Kimse paylaşmıyor VEYA başkası paylaşıyor ama ben de paylaşabilirim -->
         <div
-          x-show="!isScreenSharing && !isCameraSharing && getPresenterCount() === 0 && !showWhiteboard"
+          x-show="!isScreenSharing && !isCameraSharing && !remoteStream && !showWhiteboard && canShare()"
           class="relative z-10 flex flex-col items-center gap-6 p-8 rounded-2xl bg-surface-dark/90 shadow-2xl backdrop-blur-md max-w-md text-center border border-border-dark"
         >
           <div
@@ -462,7 +462,10 @@
                 x-text="isMobile ? 'Kameranızı veya ekranınızı paylaşmak için aşağıdaki butona tıklayın.' : 'Ekranınızı paylaşmak için aşağıdaki butona tıklayın.'"
               ></span>
               <br /><span class="text-xs text-primary"
-                >Maksimum 2 kişi aynı anda paylaşabilir</span
+                >Maksimum 2 kişi aynı anda paylaşabilir (<span
+                  x-text="getPresenterCount()"
+                ></span
+                >/2)</span
               >
             </p>
           </div>
@@ -665,7 +668,10 @@
               class="text-slate-200 text-xs font-medium"
               x-text="isCameraSharing ? 'Kameranızı paylaşıyorsunuz' : 'Ekranınızı paylaşıyorsunuz'"
             ></p>
-            <span class="text-xs text-slate-400" x-text="'(' + getPresenterCount() + '/2 presenter)'"</span>
+            <span
+              class="text-xs text-slate-400"
+              x-text="'(' + getPresenterCount() + '/2 presenter)'"
+            ></span>
           </div>
         </div>
 
@@ -688,7 +694,19 @@
               ></span>
               paylaşıyor
             </p>
-            <span class="text-xs text-slate-400" x-text="'(' + getPresenterCount() + '/2)'"</span>
+            <span
+              class="text-xs text-slate-400"
+              x-text="'(' + getPresenterCount() + '/2)'"
+            ></span>
+            <!-- Sen de paylaş butonu (max 2'ye ulaşılmadıysa) -->
+            <template x-if="canShare()">
+              <button
+                @click="isMobile ? (showShareMenu = !showShareMenu) : startScreenShare()"
+                class="ml-2 px-3 py-1 bg-primary hover:bg-primary-hover text-white text-xs font-medium rounded-full transition-colors"
+              >
+                Sen de paylaş
+              </button>
+            </template>
           </div>
         </div>
       </div>
@@ -725,7 +743,9 @@
             :class="showAnnotationTools ? 'active' : 'text-slate-400'"
             title="Ekran Üzerine Çiz"
           >
-            <span class="material-symbols-outlined text-[20px] md:text-[24px]">draw</span>
+            <span class="material-symbols-outlined text-[20px] md:text-[24px]"
+              >draw</span
+            >
           </button>
 
           <!-- File Share Button -->
@@ -734,135 +754,132 @@
             class="control-btn text-slate-400 p-2 md:p-3"
             title="Dosya Paylaş"
           >
-            <span class="material-symbols-outlined text-[20px] md:text-[24px]">attach_file</span>
+            <span class="material-symbols-outlined text-[20px] md:text-[24px]"
+              >attach_file</span
+            >
           </button>
 
           <div class="w-px h-6 md:h-8 bg-white/10 mx-0.5 md:mx-1"></div>
 
           <!-- Share Button with Menu -->
-          <div class="relative" x-data="{ open: false }">
+          <div class="relative">
             <!-- Paylaşım Aktifken - Durdur Butonu -->
-            <template x-if="isScreenSharing || isCameraSharing">
-              <div class="flex items-center gap-1">
-                <!-- Kamera değiştir (sadece kamera paylaşımında) -->
-                <button
-                  x-show="isCameraSharing"
-                  @click="switchCamera()"
-                  class="flex items-center gap-1 px-3 h-10 rounded-lg font-medium text-sm bg-surface-dark text-white hover:bg-surface-hover transition-all"
-                  title="Kamera Değiştir"
+            <div
+              x-show="isScreenSharing || isCameraSharing"
+              class="flex items-center gap-1"
+            >
+              <!-- Kamera değiştir (sadece kamera paylaşımında) -->
+              <button
+                x-show="isCameraSharing"
+                @click="switchCamera()"
+                class="flex items-center gap-1 px-3 h-10 rounded-lg font-medium text-sm bg-surface-dark text-white hover:bg-surface-hover transition-all"
+                title="Kamera Değiştir"
+              >
+                <span class="material-symbols-outlined text-[20px]"
+                  >cameraswitch</span
                 >
-                  <span class="material-symbols-outlined text-[20px]"
-                    >cameraswitch</span
-                  >
-                </button>
-                <!-- Durdur -->
-                <button
-                  @click="stopSharing()"
-                  class="flex items-center gap-2 px-4 h-10 rounded-lg font-medium text-sm bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
+              </button>
+              <!-- Durdur -->
+              <button
+                @click="stopSharing()"
+                class="flex items-center gap-2 px-4 h-10 rounded-lg font-medium text-sm bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
+              >
+                <span class="material-symbols-outlined text-[20px]"
+                  >stop_screen_share</span
                 >
-                  <span class="material-symbols-outlined text-[20px]"
-                    >stop_screen_share</span
-                  >
-                  <span class="hidden sm:inline">Durdur</span>
-                </button>
-              </div>
-            </template>
+                <span class="hidden sm:inline">Durdur</span>
+              </button>
+            </div>
 
             <!-- Paylaşım Pasifken -->
-            <template x-if="!isScreenSharing && !isCameraSharing">
+            <div x-show="!isScreenSharing && !isCameraSharing">
               <!-- Maksimum presenter'a ulaşıldıysa disabled -->
-              <template x-if="!canShare()">
+              <button
+                x-show="!canShare()"
+                disabled
+                class="flex items-center gap-2 px-4 h-10 rounded-lg font-medium text-sm bg-surface-dark text-slate-500 cursor-not-allowed"
+              >
+                <span class="material-symbols-outlined text-[20px]"
+                  >screen_share</span
+                >
+                <span class="hidden sm:inline">2/2 Paylaşım</span>
+              </button>
+
+              <!-- Paylaşım yapılabilir -->
+              <div x-show="canShare()" class="relative">
+                <!-- Mobil: Menü göster -->
+                <div x-show="isMobile">
+                  <button
+                    @click="showShareMenu = !showShareMenu"
+                    class="flex items-center gap-2 px-4 h-10 rounded-lg font-medium text-sm bg-primary hover:bg-primary-hover text-white shadow-md shadow-primary/20 transition-all"
+                  >
+                    <span class="material-symbols-outlined text-[20px]"
+                      >add</span
+                    >
+                    <span class="hidden sm:inline">Paylaş</span>
+                    <span
+                      class="material-symbols-outlined text-[16px]"
+                      x-text="showShareMenu ? 'expand_less' : 'expand_more'"
+                    ></span>
+                  </button>
+
+                  <!-- Dropdown Menu -->
+                  <div
+                    x-show="showShareMenu"
+                    @click.away="showShareMenu = false"
+                    x-transition:enter="transition ease-out duration-100"
+                    x-transition:enter-start="transform opacity-0 scale-95"
+                    x-transition:enter-end="transform opacity-100 scale-100"
+                    x-transition:leave="transition ease-in duration-75"
+                    x-transition:leave-start="transform opacity-100 scale-100"
+                    x-transition:leave-end="transform opacity-0 scale-95"
+                    class="absolute bottom-full left-0 mb-2 w-48 bg-surface-dark border border-border-dark rounded-lg shadow-xl overflow-hidden z-50"
+                  >
+                    <button
+                      @click="startCameraShare(); showShareMenu = false"
+                      class="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-hover transition-colors"
+                    >
+                      <span class="material-symbols-outlined text-primary"
+                        >videocam</span
+                      >
+                      <div class="text-left">
+                        <div class="font-medium">Kamera Paylaş</div>
+                        <div class="text-xs text-text-secondary">
+                          Ön veya arka kamera
+                        </div>
+                      </div>
+                    </button>
+                    <div class="border-t border-border-dark"></div>
+                    <button
+                      @click="startScreenShare(); showShareMenu = false"
+                      class="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-hover transition-colors"
+                    >
+                      <span class="material-symbols-outlined text-blue-400"
+                        >screen_share</span
+                      >
+                      <div class="text-left">
+                        <div class="font-medium">Ekran Paylaş</div>
+                        <div class="text-xs text-text-secondary">
+                          Desteklenmeyebilir
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Desktop: Direkt ekran paylaşımı -->
                 <button
-                  disabled
-                  class="flex items-center gap-2 px-4 h-10 rounded-lg font-medium text-sm bg-surface-dark text-slate-500 cursor-not-allowed"
+                  x-show="!isMobile"
+                  @click="startScreenShare()"
+                  class="flex items-center gap-2 px-4 h-10 rounded-lg font-medium text-sm bg-primary hover:bg-primary-hover text-white shadow-md shadow-primary/20 transition-all"
                 >
                   <span class="material-symbols-outlined text-[20px]"
                     >screen_share</span
                   >
-                  <span class="hidden sm:inline">2/2 Paylaşım</span>
+                  <span class="hidden sm:inline">Paylaş</span>
                 </button>
-              </template>
-
-              <!-- Paylaşım yapılabilir -->
-              <template x-if="canShare()">
-                <div class="relative">
-                  <!-- Mobil: Menü göster -->
-                  <template x-if="isMobile">
-                    <div>
-                      <button
-                        @click="showShareMenu = !showShareMenu"
-                        class="flex items-center gap-2 px-4 h-10 rounded-lg font-medium text-sm bg-primary hover:bg-primary-hover text-white shadow-md shadow-primary/20 transition-all"
-                      >
-                        <span class="material-symbols-outlined text-[20px]"
-                          >add</span
-                        >
-                        <span class="hidden sm:inline">Paylaş</span>
-                        <span
-                          class="material-symbols-outlined text-[16px]"
-                          x-text="showShareMenu ? 'expand_less' : 'expand_more'"
-                        ></span>
-                      </button>
-
-                      <!-- Dropdown Menu -->
-                      <div
-                        x-show="showShareMenu"
-                        @click.away="showShareMenu = false"
-                        x-transition:enter="transition ease-out duration-100"
-                        x-transition:enter-start="transform opacity-0 scale-95"
-                        x-transition:enter-end="transform opacity-100 scale-100"
-                        x-transition:leave="transition ease-in duration-75"
-                        x-transition:leave-start="transform opacity-100 scale-100"
-                        x-transition:leave-end="transform opacity-0 scale-95"
-                        class="absolute bottom-full left-0 mb-2 w-48 bg-surface-dark border border-border-dark rounded-lg shadow-xl overflow-hidden z-50"
-                      >
-                        <button
-                          @click="startCameraShare(); showShareMenu = false"
-                          class="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-hover transition-colors"
-                        >
-                          <span class="material-symbols-outlined text-primary"
-                            >videocam</span
-                          >
-                          <div class="text-left">
-                            <div class="font-medium">Kamera Paylaş</div>
-                            <div class="text-xs text-text-secondary">
-                              Ön veya arka kamera
-                            </div>
-                          </div>
-                        </button>
-                        <div class="border-t border-border-dark"></div>
-                        <button
-                          @click="startScreenShare(); showShareMenu = false"
-                          class="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-hover transition-colors"
-                        >
-                          <span class="material-symbols-outlined text-blue-400"
-                            >screen_share</span
-                          >
-                          <div class="text-left">
-                            <div class="font-medium">Ekran Paylaş</div>
-                            <div class="text-xs text-text-secondary">
-                              Desteklenmeyebilir
-                            </div>
-                          </div>
-                        </button>
-                      </div>
-                    </div>
-                  </template>
-
-                  <!-- Desktop: Direkt ekran paylaşımı -->
-                  <template x-if="!isMobile">
-                    <button
-                      @click="startScreenShare()"
-                      class="flex items-center gap-2 px-4 h-10 rounded-lg font-medium text-sm bg-primary hover:bg-primary-hover text-white shadow-md shadow-primary/20 transition-all"
-                    >
-                      <span class="material-symbols-outlined text-[20px]"
-                        >screen_share</span
-                      >
-                      <span class="hidden sm:inline">Paylaş</span>
-                    </button>
-                  </template>
-                </div>
-              </template>
-            </template>
+              </div>
+            </div>
           </div>
 
           <!-- More Options -->
@@ -1321,7 +1338,15 @@
         // Zaten paylaşıyorsak true
         if (this.isScreenSharing || this.isCameraSharing) return true;
         // Maksimum presenter sayısına ulaşılmadıysa true
-        return Object.keys(this.presenters).length < this.maxPresenters;
+        const presenterCount = Object.keys(this.presenters).length;
+        const canShareResult = presenterCount < this.maxPresenters;
+        console.log("canShare check:", {
+          presenterCount,
+          maxPresenters: this.maxPresenters,
+          presenters: this.presenters,
+          canShareResult,
+        });
+        return canShareResult;
       },
 
       // Presenter sayısı
@@ -1384,6 +1409,10 @@
           this.remoteStream = stream;
           if (stream && this.$refs.remoteVideo) {
             this.$refs.remoteVideo.srcObject = stream;
+            // Remote stream geldiğinde annotation canvas'ı başlat
+            this.$nextTick(() => {
+              this.initAnnotationCanvas();
+            });
           }
         };
 
@@ -1430,6 +1459,7 @@
 
         // Çoklu presenter güncellemesi callback
         this.webrtc.onPresentersUpdate = (presenters) => {
+          console.log("Presenters updated:", presenters);
           this.presenters = presenters;
           // İlk presenter'ı currentPresenter olarak ayarla (geriye uyumluluk)
           const presenterIds = Object.keys(presenters);
@@ -2133,7 +2163,12 @@
       },
 
       handleRemoteAnnotation(data) {
-        if (!this.annotationCtx) {
+        // Canvas yoksa veya boyutu 0 ise başlat
+        if (
+          !this.annotationCtx ||
+          !this.$refs.annotationCanvas ||
+          this.$refs.annotationCanvas.width === 0
+        ) {
           this.initAnnotationCanvas();
         }
         if (!this.annotationCtx) return;

@@ -304,17 +304,19 @@ async def websocket_room(
                     }, exclude_user=user_id)
                 
                 elif msg_type == "annotation":
-                    # Ekran üzerine çizim/işaretleme
+                    # Ekran üzerine çizim/işaretleme - TÜM kullanıcılara gönder (çizen dahil değil)
                     await manager.broadcast_to_room(room_id, {
                         "type": "annotation",
                         "user_id": user_id,
                         "username": username,
-                        "target_presenter": data.get("target_presenter"),  # Hangi ekrana çiziliyor
+                        "presenterId": data.get("presenterId"),  # Hangi ekrana çiziliyor
                         "tool": data.get("tool"),  # pen, laser, highlight, eraser
                         "color": data.get("color"),
                         "size": data.get("size"),
-                        "points": data.get("points"),  # [{x, y}, ...]
-                        "action": data.get("action")  # start, move, end, clear
+                        "fromX": data.get("fromX"),
+                        "fromY": data.get("fromY"),
+                        "toX": data.get("toX"),
+                        "toY": data.get("toY"),
                     }, exclude_user=user_id)
                 
                 elif msg_type == "file_share":
