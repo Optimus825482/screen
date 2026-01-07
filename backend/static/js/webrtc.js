@@ -422,17 +422,13 @@ class WebRTCManager {
     }
 
     try {
-      // Ekran paylaşımı + sistem sesi (tab audio)
+      // Ekran paylaşımı - ses OLMADAN başlat (kullanıcı mikrofonu açarsa eklenecek)
       this.localStream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           cursor: "always",
           displaySurface: "monitor",
         },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 44100,
-        },
+        audio: false, // Ses varsayılan olarak kapalı
       });
 
       // Ekran paylaşımı durduğunda
@@ -442,7 +438,7 @@ class WebRTCManager {
 
       this.isScreenSharing = true;
       this.isCameraSharing = false;
-      this.isMuted = false; // Sistem sesi varsa mute değil
+      this.isMuted = true; // Mikrofon varsayılan kapalı
       this.send({ type: "screen_share_started", share_type: "screen" });
 
       // Mevcut kullanıcılara offer gönder
@@ -469,17 +465,14 @@ class WebRTCManager {
     try {
       this.currentFacingMode = facingMode;
 
+      // Kamera paylaşımı - ses OLMADAN başlat
       this.localStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: facingMode,
           width: { ideal: 1280 },
           height: { ideal: 720 },
         },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        audio: false, // Ses varsayılan olarak kapalı
       });
 
       // Kamera durduğunda
@@ -489,7 +482,7 @@ class WebRTCManager {
 
       this.isCameraSharing = true;
       this.isScreenSharing = false;
-      this.isMuted = false;
+      this.isMuted = true; // Mikrofon varsayılan kapalı
       this.send({ type: "screen_share_started", share_type: "camera" });
 
       // Mevcut kullanıcılara offer gönder
@@ -795,11 +788,32 @@ class WebRTCManager {
     };
 
     pc.ontrack = (event) => {
-      console.log(`Received track from ${userId}:`, event.streams[0]);
-      // Remote stream'i sakla (çoklu presenter için)
-      this.remoteStreams.set(userId, event.streams[0]);
+      console.log(
+        `Received track from ${userId}:`,
+        event.track.kind,
+        "stream:",
+        event.streams[0],
+        "active:",
+        event.streams[0]?.active
+      );
+      const stream = event.streams[0];
+
+      // Stream'i sakla (çoklu presenter için)
+      this.remoteStreams.set(userId, stream);
+
+      // Track event listeners ekle
+      event.track.onended = () => {
+        console.log(`Track ended from ${userId}:`, event.track.kind);
+      };
+      event.track.onmute = () => {
+        console.log(`Track muted from ${userId}:`, event.track.kind);
+      };
+      event.track.onunmute = () => {
+        console.log(`Track unmuted from ${userId}:`, event.track.kind);
+      };
+
       if (this.onRemoteStream) {
-        this.onRemoteStream(event.streams[0]);
+        this.onRemoteStream(stream);
       }
     };
 
@@ -815,77 +829,111 @@ class WebRTCManager {
   }
 
   async createOfferForUser(userId) {
-    if (!this.localStream) return;
+    if (!this.localStream) {
+      console.log(`No local stream for offer to ${userId}`);
+      return;
+    }
 
     let pc = this.peerConnections.get(userId);
     if (!pc) {
       pc = this.createPeerConnection(userId);
     }
 
+    console.log(
+      `Creating offer for ${userId}, signalingState: ${pc.signalingState}`
+    );
+
     // Eğer zaten stable state'deyse ve track'ler ekliyse, sadece renegotiate et
     const senders = pc.getSenders();
 
     // Track'leri ekle veya güncelle
-    this.localStream.getTracks().forEach((track) => {
+    for (const track of this.localStream.getTracks()) {
       const sender = senders.find((s) => s.track?.kind === track.kind);
       if (sender) {
         // Mevcut sender varsa track'i değiştir
-        sender
-          .replaceTrack(track)
-          .catch((e) => console.warn("Replace track error:", e));
+        try {
+          await sender.replaceTrack(track);
+          console.log(`Replaced ${track.kind} track for ${userId}`);
+        } catch (e) {
+          console.warn(`Replace track error for ${userId}:`, e);
+        }
       } else {
         // Yeni track ekle
-        pc.addTrack(track, this.localStream);
+        try {
+          pc.addTrack(track, this.localStream);
+          console.log(`Added ${track.kind} track for ${userId}`);
+        } catch (e) {
+          console.warn(`Add track error for ${userId}:`, e);
+        }
       }
-    });
+    }
 
     // Sadece stable state'deyken offer oluştur
     if (pc.signalingState === "stable") {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
+      try {
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+        });
+        await pc.setLocalDescription(offer);
 
-      this.send({
-        type: "offer",
-        target: userId,
-        sdp: pc.localDescription,
-      });
+        this.send({
+          type: "offer",
+          target: userId,
+          sdp: pc.localDescription,
+        });
+        console.log(`Offer sent to ${userId}`);
+      } catch (e) {
+        console.error(`Error creating offer for ${userId}:`, e);
+      }
     } else {
       console.log(`Skipping offer for ${userId}, state: ${pc.signalingState}`);
     }
   }
 
   async handleOffer(fromUserId, sdp) {
+    console.log(`Handling offer from ${fromUserId}`);
+
     let pc = this.peerConnections.get(fromUserId);
     if (!pc) {
       pc = this.createPeerConnection(fromUserId);
     }
 
-    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    try {
+      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      console.log(`Remote description set for ${fromUserId}`);
 
-    // Bekleyen ICE candidate'leri işle
-    if (
-      this.pendingIceCandidates &&
-      this.pendingIceCandidates.has(fromUserId)
-    ) {
-      const candidates = this.pendingIceCandidates.get(fromUserId);
-      for (const candidate of candidates) {
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (e) {
-          console.warn("Error adding queued ICE candidate:", e);
+      // Bekleyen ICE candidate'leri işle
+      if (
+        this.pendingIceCandidates &&
+        this.pendingIceCandidates.has(fromUserId)
+      ) {
+        const candidates = this.pendingIceCandidates.get(fromUserId);
+        console.log(
+          `Processing ${candidates.length} queued ICE candidates for ${fromUserId}`
+        );
+        for (const candidate of candidates) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (e) {
+            console.warn("Error adding queued ICE candidate:", e);
+          }
         }
+        this.pendingIceCandidates.delete(fromUserId);
       }
-      this.pendingIceCandidates.delete(fromUserId);
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      this.send({
+        type: "answer",
+        target: fromUserId,
+        sdp: pc.localDescription,
+      });
+      console.log(`Answer sent to ${fromUserId}`);
+    } catch (e) {
+      console.error(`Error handling offer from ${fromUserId}:`, e);
     }
-
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-
-    this.send({
-      type: "answer",
-      target: fromUserId,
-      sdp: pc.localDescription,
-    });
   }
 
   async handleAnswer(fromUserId, sdp) {

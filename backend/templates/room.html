@@ -1406,12 +1406,37 @@
         };
 
         this.webrtc.onRemoteStream = (stream) => {
+          console.log(
+            "Remote stream received:",
+            stream,
+            "active:",
+            stream?.active
+          );
           this.remoteStream = stream;
           if (stream && this.$refs.remoteVideo) {
             this.$refs.remoteVideo.srcObject = stream;
+            // Mobil için: video'yu manuel başlat (autoplay politikası)
+            this.$refs.remoteVideo.play().catch((e) => {
+              console.warn(
+                "Video autoplay failed, user interaction needed:",
+                e
+              );
+            });
             // Remote stream geldiğinde annotation canvas'ı başlat
             this.$nextTick(() => {
               this.initAnnotationCanvas();
+            });
+            // Stream track'lerini dinle
+            stream.getTracks().forEach((track) => {
+              track.onended = () => {
+                console.log("Remote track ended:", track.kind);
+              };
+              track.onmute = () => {
+                console.log("Remote track muted:", track.kind);
+              };
+              track.onunmute = () => {
+                console.log("Remote track unmuted:", track.kind);
+              };
             });
           }
         };
@@ -2150,15 +2175,21 @@
 
           this.annotationCtx.stroke();
 
-          // Diğer kullanıcılara gönder
+          // Koordinatları normalize et (0-1 arasında) - farklı ekran boyutlarında çalışması için
+          const canvas = this.$refs.annotationCanvas;
+          const dpr = window.devicePixelRatio || 1;
+          const canvasWidth = canvas.width / dpr;
+          const canvasHeight = canvas.height / dpr;
+
+          // Diğer kullanıcılara gönder (normalize edilmiş koordinatlar)
           this.webrtc.sendAnnotation({
             tool: this.annotationTool,
             color: this.annotationColor,
             size: this.annotationSize,
-            fromX: this.lastAnnotationX,
-            fromY: this.lastAnnotationY,
-            toX: coords.x,
-            toY: coords.y,
+            fromX: this.lastAnnotationX / canvasWidth,
+            fromY: this.lastAnnotationY / canvasHeight,
+            toX: coords.x / canvasWidth,
+            toY: coords.y / canvasHeight,
             presenterId: this.currentPresenterId,
           });
         }
@@ -2207,14 +2238,33 @@
         }
         if (!this.annotationCtx) return;
 
+        const canvas = this.$refs.annotationCanvas;
+        const dpr = window.devicePixelRatio || 1;
+        const canvasWidth = canvas.width / dpr;
+        const canvasHeight = canvas.height / dpr;
+
+        // Normalize edilmiş koordinatları local canvas boyutuna çevir
+        const fromX = data.fromX * canvasWidth;
+        const fromY = data.fromY * canvasHeight;
+        const toX = data.toX * canvasWidth;
+        const toY = data.toY * canvasHeight;
+
+        console.log("Remote annotation received:", {
+          fromX,
+          fromY,
+          toX,
+          toY,
+          tool: data.tool,
+        });
+
         if (data.tool === "laser") {
           this.clearAnnotationCanvas();
-          this.drawLaserPoint(data.toX, data.toY);
+          this.drawLaserPoint(toX, toY);
           setTimeout(() => this.clearAnnotationCanvas(), 500);
         } else {
           this.annotationCtx.beginPath();
-          this.annotationCtx.moveTo(data.fromX, data.fromY);
-          this.annotationCtx.lineTo(data.toX, data.toY);
+          this.annotationCtx.moveTo(fromX, fromY);
+          this.annotationCtx.lineTo(toX, toY);
 
           if (data.tool === "eraser") {
             this.annotationCtx.globalCompositeOperation = "destination-out";
