@@ -771,6 +771,17 @@ class WebRTCManager {
   }
 
   createPeerConnection(userId) {
+    // Mevcut connection varsa ve stable state'deyse, yeniden oluşturma
+    const existingPc = this.peerConnections.get(userId);
+    if (
+      existingPc &&
+      existingPc.connectionState !== "failed" &&
+      existingPc.connectionState !== "closed"
+    ) {
+      console.log(`Reusing existing peer connection for ${userId}`);
+      return existingPc;
+    }
+
     const pc = new RTCPeerConnection(this.config);
 
     pc.onicecandidate = (event) => {
@@ -784,6 +795,9 @@ class WebRTCManager {
     };
 
     pc.ontrack = (event) => {
+      console.log(`Received track from ${userId}:`, event.streams[0]);
+      // Remote stream'i sakla (çoklu presenter için)
+      this.remoteStreams.set(userId, event.streams[0]);
       if (this.onRemoteStream) {
         this.onRemoteStream(event.streams[0]);
       }
@@ -808,22 +822,36 @@ class WebRTCManager {
       pc = this.createPeerConnection(userId);
     }
 
-    // Track'leri ekle
+    // Eğer zaten stable state'deyse ve track'ler ekliyse, sadece renegotiate et
+    const senders = pc.getSenders();
+
+    // Track'leri ekle veya güncelle
     this.localStream.getTracks().forEach((track) => {
-      const sender = pc.getSenders().find((s) => s.track?.kind === track.kind);
-      if (!sender) {
+      const sender = senders.find((s) => s.track?.kind === track.kind);
+      if (sender) {
+        // Mevcut sender varsa track'i değiştir
+        sender
+          .replaceTrack(track)
+          .catch((e) => console.warn("Replace track error:", e));
+      } else {
+        // Yeni track ekle
         pc.addTrack(track, this.localStream);
       }
     });
 
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+    // Sadece stable state'deyken offer oluştur
+    if (pc.signalingState === "stable") {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
 
-    this.send({
-      type: "offer",
-      target: userId,
-      sdp: pc.localDescription,
-    });
+      this.send({
+        type: "offer",
+        target: userId,
+        sdp: pc.localDescription,
+      });
+    } else {
+      console.log(`Skipping offer for ${userId}, state: ${pc.signalingState}`);
+    }
   }
 
   async handleOffer(fromUserId, sdp) {
@@ -833,6 +861,23 @@ class WebRTCManager {
     }
 
     await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+
+    // Bekleyen ICE candidate'leri işle
+    if (
+      this.pendingIceCandidates &&
+      this.pendingIceCandidates.has(fromUserId)
+    ) {
+      const candidates = this.pendingIceCandidates.get(fromUserId);
+      for (const candidate of candidates) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {
+          console.warn("Error adding queued ICE candidate:", e);
+        }
+      }
+      this.pendingIceCandidates.delete(fromUserId);
+    }
+
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
@@ -846,7 +891,14 @@ class WebRTCManager {
   async handleAnswer(fromUserId, sdp) {
     const pc = this.peerConnections.get(fromUserId);
     if (pc) {
-      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      // Sadece have-local-offer state'indeyken answer kabul et
+      if (pc.signalingState === "have-local-offer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      } else {
+        console.warn(
+          `Ignoring answer from ${fromUserId}, wrong state: ${pc.signalingState}`
+        );
+      }
     }
   }
 
@@ -855,7 +907,22 @@ class WebRTCManager {
     const pc = this.peerConnections.get(fromUserId);
     if (pc && candidate) {
       try {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        // Remote description varsa ekle, yoksa beklet
+        if (pc.remoteDescription && pc.remoteDescription.type) {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } else {
+          console.log(
+            `Queuing ICE candidate for ${fromUserId}, no remote description yet`
+          );
+          // ICE candidate'leri kuyrukta tut
+          if (!this.pendingIceCandidates) {
+            this.pendingIceCandidates = new Map();
+          }
+          if (!this.pendingIceCandidates.has(fromUserId)) {
+            this.pendingIceCandidates.set(fromUserId, []);
+          }
+          this.pendingIceCandidates.get(fromUserId).push(candidate);
+        }
       } catch (e) {
         console.warn("Video ICE candidate error:", e);
       }
@@ -865,7 +932,9 @@ class WebRTCManager {
     const audioPc = this.viewerAudioConnections.get(fromUserId);
     if (audioPc && candidate) {
       try {
-        await audioPc.addIceCandidate(new RTCIceCandidate(candidate));
+        if (audioPc.remoteDescription && audioPc.remoteDescription.type) {
+          await audioPc.addIceCandidate(new RTCIceCandidate(candidate));
+        }
       } catch (e) {
         console.warn("Viewer audio ICE candidate error:", e);
       }
