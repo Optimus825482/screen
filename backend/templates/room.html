@@ -1572,6 +1572,13 @@
           return;
         }
 
+        // Mevcut remote stream'i kaydet
+        const existingRemoteStream = this.remoteStream;
+        console.log(
+          "Before screen share - remoteStream:",
+          existingRemoteStream
+        );
+
         try {
           const stream = await this.webrtc.startScreenShare();
           this.isScreenSharing = true;
@@ -1583,6 +1590,16 @@
             this.$refs.localVideo.srcObject = stream;
           }
           this.startTimer();
+
+          // Remote stream'i geri yükle (kaybolmuşsa)
+          if (existingRemoteStream && !this.remoteStream) {
+            console.log("Restoring remote stream");
+            this.remoteStream = existingRemoteStream;
+            if (this.$refs.remoteVideo) {
+              this.$refs.remoteVideo.srcObject = existingRemoteStream;
+            }
+          }
+          console.log("After screen share - remoteStream:", this.remoteStream);
         } catch (e) {
           console.error("Screen share failed:", e);
           if (e.message && e.message.includes("Maksimum")) {
@@ -1602,6 +1619,13 @@
           return;
         }
 
+        // Mevcut remote stream'i kaydet
+        const existingRemoteStream = this.remoteStream;
+        console.log(
+          "Before camera share - remoteStream:",
+          existingRemoteStream
+        );
+
         try {
           const stream = await this.webrtc.startCameraShare("user");
           this.isCameraSharing = true;
@@ -1614,6 +1638,16 @@
           }
           this.startTimer();
           this.showShareMenu = false;
+
+          // Remote stream'i geri yükle (kaybolmuşsa)
+          if (existingRemoteStream && !this.remoteStream) {
+            console.log("Restoring remote stream");
+            this.remoteStream = existingRemoteStream;
+            if (this.$refs.remoteVideo) {
+              this.$refs.remoteVideo.srcObject = existingRemoteStream;
+            }
+          }
+          console.log("After camera share - remoteStream:", this.remoteStream);
         } catch (e) {
           console.error("Camera share failed:", e);
           if (e.message && e.message.includes("Maksimum")) {
