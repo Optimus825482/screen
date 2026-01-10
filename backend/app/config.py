@@ -52,26 +52,22 @@ class Settings(BaseSettings):
     TURN_USERNAME: str = ""
     TURN_CREDENTIAL: str = ""
 
-    # CORS - accepts JSON string or comma-separated values
-    CORS_ORIGINS: list[str] = ["http://localhost:8000", "http://127.0.0.1:8000"]
+    # CORS - comma-separated string (e.g., "https://example.com,http://localhost:8000")
+    CORS_ORIGINS: str = "http://localhost:8000,http://127.0.0.1:8000"
 
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, v):
-        """Parse CORS_ORIGINS from string (JSON or comma-separated) or list."""
-        if isinstance(v, list):
-            return v
-        if isinstance(v, str):
-            v = v.strip()
-            # Try JSON parse first
-            if v.startswith("["):
-                try:
-                    return json.loads(v)
-                except json.JSONDecodeError:
-                    pass
-            # Fallback to comma-separated
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
-        return v
+    def get_cors_origins(self) -> list[str]:
+        """Parse CORS_ORIGINS string to list."""
+        if not self.CORS_ORIGINS:
+            return []
+        value = self.CORS_ORIGINS.strip()
+        # Try JSON parse first
+        if value.startswith("["):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                pass
+        # Comma-separated
+        return [origin.strip() for origin in value.split(",") if origin.strip()]
 
     # Room Settings
     MAX_VIEWERS_PER_ROOM: int = 5  # Max 5 katılımcı (host dahil)
