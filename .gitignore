@@ -31,3 +31,4 @@ redis_data/
 
 # Byte-compiled
 *.pyc
+nul

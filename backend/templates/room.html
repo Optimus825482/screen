@@ -204,28 +204,185 @@
       ></h2>
     </div>
 
-    <!-- Invite Link (Center) - Hidden on mobile -->
-    <div class="hidden sm:flex flex-1 justify-center">
+    <!-- Center Controls - Invite Link + Control Buttons -->
+    <div class="hidden sm:flex flex-1 items-center justify-center gap-3">
+      <!-- Invite Link (Compact) -->
       <div
-        class="flex items-center gap-2 bg-surface-dark px-3 py-1.5 rounded-lg border border-border-dark max-w-md"
+        class="flex items-center gap-2 bg-surface-dark px-2 py-1 rounded-lg border border-border-dark"
       >
-        <span class="material-symbols-outlined text-primary text-[18px]"
+        <span class="material-symbols-outlined text-primary text-[16px]"
           >link</span
         >
         <span
-          class="text-xs text-text-secondary truncate max-w-[200px] md:max-w-[300px] select-all"
+          class="text-xs text-text-secondary truncate max-w-[120px] lg:max-w-[180px] select-all"
           x-text="getInviteLink()"
         ></span>
         <button
           @click="copyInviteLinkHeader()"
-          class="p-1.5 hover:bg-surface-hover rounded-md transition-colors group"
+          class="p-1 hover:bg-surface-hover rounded-md transition-colors group"
           title="Linki Kopyala"
         >
           <span
-            class="material-symbols-outlined text-[16px] text-text-secondary group-hover:text-primary transition-colors"
+            class="material-symbols-outlined text-[14px] text-text-secondary group-hover:text-primary transition-colors"
             x-text="linkCopied ? 'check' : 'content_copy'"
             :class="linkCopied ? 'text-green-500' : ''"
           ></span>
+        </button>
+      </div>
+
+      <!-- Header Control Buttons -->
+      <div
+        class="flex items-center gap-1 bg-surface-dark border border-border-dark p-1 rounded-lg"
+      >
+        <!-- Mic Toggle -->
+        <button
+          @click="toggleMic()"
+          class="control-btn relative p-2"
+          :class="!isMuted ? 'text-white' : 'text-slate-400'"
+          :title="isMuted ? 'Mikrofonu Aç' : 'Mikrofonu Kapat'"
+        >
+          <span
+            x-show="!isMuted"
+            class="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full border border-surface-dark"
+          ></span>
+          <span
+            class="material-symbols-outlined text-[18px]"
+            x-text="isMuted ? 'mic_off' : 'mic'"
+          ></span>
+        </button>
+
+        <!-- Annotation Toggle -->
+        <button
+          x-show="remoteStream || isScreenSharing || isCameraSharing"
+          @click="toggleAnnotationTools()"
+          class="control-btn p-2"
+          :class="showAnnotationTools ? 'active' : 'text-slate-400'"
+          title="Ekran Üzerine Çiz"
+        >
+          <span class="material-symbols-outlined text-[18px]">draw</span>
+        </button>
+
+        <!-- File Share -->
+        <button
+          @click="!fileUploading && selectFileToShare()"
+          class="control-btn p-2"
+          :class="fileUploading ? 'text-primary cursor-wait' : 'text-slate-400'"
+          :title="fileUploading ? 'Dosya yükleniyor...' : 'Dosya Paylaş'"
+        >
+          <span class="material-symbols-outlined text-[18px]">attach_file</span>
+        </button>
+
+        <div class="w-px h-5 bg-white/10"></div>
+
+        <!-- Share Controls -->
+        <div class="relative">
+          <!-- Paylaşım Aktifken -->
+          <div
+            x-show="isScreenSharing || isCameraSharing"
+            class="flex items-center gap-1"
+          >
+            <button
+              x-show="isCameraSharing"
+              @click="switchCamera()"
+              class="p-2 rounded-lg text-white hover:bg-surface-hover transition-all"
+              title="Kamera Değiştir"
+            >
+              <span class="material-symbols-outlined text-[18px]"
+                >cameraswitch</span
+              >
+            </button>
+            <button
+              @click="stopSharing()"
+              class="flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
+            >
+              <span class="material-symbols-outlined text-[18px]"
+                >stop_screen_share</span
+              >
+              <span class="hidden lg:inline text-xs">Durdur</span>
+            </button>
+          </div>
+
+          <!-- Paylaşım Pasifken -->
+          <div x-show="!isScreenSharing && !isCameraSharing">
+            <button
+              x-show="!canShare()"
+              disabled
+              class="flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm bg-surface-dark text-slate-500 cursor-not-allowed"
+            >
+              <span class="material-symbols-outlined text-[18px]"
+                >screen_share</span
+              >
+              <span class="text-xs">2/2</span>
+            </button>
+
+            <div x-show="canShare()" class="relative">
+              <button
+                x-show="isMobile"
+                @click="showShareMenu = !showShareMenu"
+                class="flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm bg-primary hover:bg-primary-hover text-white transition-all"
+              >
+                <span class="material-symbols-outlined text-[18px]"
+                  >screen_share</span
+                >
+                <span
+                  class="material-symbols-outlined text-[14px]"
+                  x-text="showShareMenu ? 'expand_less' : 'expand_more'"
+                ></span>
+              </button>
+
+              <button
+                x-show="!isMobile"
+                @click="startScreenShare()"
+                class="flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm bg-primary hover:bg-primary-hover text-white transition-all"
+              >
+                <span class="material-symbols-outlined text-[18px]"
+                  >screen_share</span
+                >
+                <span class="hidden lg:inline text-xs">Paylaş</span>
+              </button>
+
+              <!-- Dropdown Menu (Mobile) -->
+              <div
+                x-show="showShareMenu && isMobile"
+                @click.away="showShareMenu = false"
+                x-transition
+                class="absolute top-full left-0 mt-2 w-44 bg-surface-dark border border-border-dark rounded-lg shadow-xl overflow-hidden z-50"
+              >
+                <button
+                  @click="startCameraShare(); showShareMenu = false"
+                  class="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-surface-hover transition-colors"
+                >
+                  <span
+                    class="material-symbols-outlined text-primary text-[18px]"
+                    >videocam</span
+                  >
+                  <span>Kamera Paylaş</span>
+                </button>
+                <div class="border-t border-border-dark"></div>
+                <button
+                  @click="startScreenShare(); showShareMenu = false"
+                  class="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-surface-hover transition-colors"
+                >
+                  <span
+                    class="material-symbols-outlined text-blue-400 text-[18px]"
+                    >screen_share</span
+                  >
+                  <span>Ekran Paylaş</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="w-px h-5 bg-white/10"></div>
+
+        <!-- End Call -->
+        <button
+          @click="isHost ? endRoom() : leaveRoom()"
+          class="control-btn danger text-white p-2"
+          :title="isHost ? 'Odayı Sonlandır' : 'Odadan Ayrıl'"
+        >
+          <span class="material-symbols-outlined text-[18px]">call_end</span>
         </button>
       </div>
     </div>
@@ -250,8 +407,14 @@
           x-transition.opacity
           class="flex items-center gap-2 bg-yellow-500/20 px-2 md:px-3 py-1 md:py-1.5 rounded-lg border border-yellow-500/50"
         >
-          <span class="material-symbols-outlined text-[16px] md:text-[18px] text-yellow-500 animate-spin">sync</span>
-          <span class="text-[10px] md:text-xs font-medium text-yellow-500" x-text="reconnectText"></span>
+          <span
+            class="material-symbols-outlined text-[16px] md:text-[18px] text-yellow-500 animate-spin"
+            >sync</span
+          >
+          <span
+            class="text-[10px] md:text-xs font-medium text-yellow-500"
+            x-text="reconnectText"
+          ></span>
         </div>
         <!-- Connection Status -->
         <div
@@ -727,209 +890,135 @@
         </div>
       </div>
 
-      <!-- Control Bar -->
-      <div class="flex justify-center pb-2 md:pb-4 safe-area-bottom">
+      <!-- Mobile Control Bar (sadece mobilde görünür) -->
+      <div class="flex sm:hidden justify-center pb-2 safe-area-bottom">
         <div
-          class="flex items-center gap-1 md:gap-2 bg-surface-dark border border-border-dark p-1.5 md:p-2 rounded-xl shadow-lg"
+          class="flex items-center gap-1 bg-surface-dark border border-border-dark p-1.5 rounded-xl shadow-lg"
         >
           <!-- Mic Toggle -->
           <button
             @click="toggleMic()"
-            class="control-btn relative p-2 md:p-3"
+            class="control-btn relative p-2"
             :class="!isMuted ? 'text-white' : 'text-slate-400'"
-            :title="isMuted ? 'Mikrofonu Aç' : 'Mikrofonu Kapat'"
           >
             <span
               x-show="!isMuted"
-              class="absolute top-0.5 right-0.5 md:top-1 md:right-1 w-1.5 h-1.5 md:w-2 md:h-2 bg-green-500 rounded-full border-2 border-surface-dark"
+              class="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full border border-surface-dark"
             ></span>
             <span
-              class="material-symbols-outlined text-[20px] md:text-[24px]"
+              class="material-symbols-outlined text-[20px]"
               x-text="isMuted ? 'mic_off' : 'mic'"
             ></span>
           </button>
 
-          <div class="w-px h-6 md:h-8 bg-white/10 mx-0.5 md:mx-1"></div>
-
-          <!-- Annotation Toggle (paylaşım varken) -->
+          <!-- Annotation Toggle -->
           <button
             x-show="remoteStream || isScreenSharing || isCameraSharing"
             @click="toggleAnnotationTools()"
-            class="control-btn p-2 md:p-3"
+            class="control-btn p-2"
             :class="showAnnotationTools ? 'active' : 'text-slate-400'"
-            title="Ekran Üzerine Çiz"
           >
-            <span class="material-symbols-outlined text-[20px] md:text-[24px]"
-              >draw</span
+            <span class="material-symbols-outlined text-[20px]">draw</span>
+          </button>
+
+          <!-- File Share -->
+          <button
+            @click="!fileUploading && selectFileToShare()"
+            class="control-btn p-2"
+            :class="fileUploading ? 'text-primary' : 'text-slate-400'"
+          >
+            <span class="material-symbols-outlined text-[20px]"
+              >attach_file</span
             >
           </button>
 
-          <!-- File Share Button -->
-          <div class="relative">
-            <button
-              @click="!fileUploading && selectFileToShare()"
-              class="control-btn p-2 md:p-3"
-              :class="fileUploading ? 'text-primary cursor-wait' : 'text-slate-400'"
-              :title="fileUploading ? 'Dosya yükleniyor...' : 'Dosya Paylaş'"
-            >
-              <span class="material-symbols-outlined text-[20px] md:text-[24px]"
-                >attach_file</span
-              >
-            </button>
-            <!-- Upload Progress Indicator -->
-            <div
-              x-show="fileUploading"
-              class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-8 h-1 bg-surface-dark rounded-full overflow-hidden"
-            >
-              <div
-                class="h-full bg-primary transition-all duration-200"
-                :style="'width: ' + fileUploadProgress + '%'"
-              ></div>
-            </div>
-          </div>
+          <div class="w-px h-6 bg-white/10"></div>
 
-          <div class="w-px h-6 md:h-8 bg-white/10 mx-0.5 md:mx-1"></div>
-
-          <!-- Share Button with Menu -->
+          <!-- Share Controls -->
           <div class="relative">
-            <!-- Paylaşım Aktifken - Durdur Butonu -->
             <div
               x-show="isScreenSharing || isCameraSharing"
               class="flex items-center gap-1"
             >
-              <!-- Kamera değiştir (sadece kamera paylaşımında) -->
               <button
                 x-show="isCameraSharing"
                 @click="switchCamera()"
-                class="flex items-center gap-1 px-3 h-10 rounded-lg font-medium text-sm bg-surface-dark text-white hover:bg-surface-hover transition-all"
-                title="Kamera Değiştir"
+                class="p-2 rounded-lg text-white hover:bg-surface-hover"
               >
                 <span class="material-symbols-outlined text-[20px]"
                   >cameraswitch</span
                 >
               </button>
-              <!-- Durdur -->
               <button
                 @click="stopSharing()"
-                class="flex items-center gap-2 px-4 h-10 rounded-lg font-medium text-sm bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
+                class="p-2 rounded-lg bg-red-500/20 text-red-400"
               >
                 <span class="material-symbols-outlined text-[20px]"
                   >stop_screen_share</span
                 >
-                <span class="hidden sm:inline">Durdur</span>
               </button>
             </div>
 
-            <!-- Paylaşım Pasifken -->
             <div x-show="!isScreenSharing && !isCameraSharing">
-              <!-- Maksimum presenter'a ulaşıldıysa disabled -->
               <button
                 x-show="!canShare()"
                 disabled
-                class="flex items-center gap-2 px-4 h-10 rounded-lg font-medium text-sm bg-surface-dark text-slate-500 cursor-not-allowed"
+                class="p-2 rounded-lg text-slate-500 cursor-not-allowed"
               >
                 <span class="material-symbols-outlined text-[20px]"
                   >screen_share</span
                 >
-                <span class="hidden sm:inline">2/2 Paylaşım</span>
+              </button>
+              <button
+                x-show="canShare()"
+                @click="showShareMenu = !showShareMenu"
+                class="p-2 rounded-lg bg-primary text-white"
+              >
+                <span class="material-symbols-outlined text-[20px]"
+                  >screen_share</span
+                >
               </button>
 
-              <!-- Paylaşım yapılabilir -->
-              <div x-show="canShare()" class="relative">
-                <!-- Mobil: Menü göster -->
-                <div x-show="isMobile">
-                  <button
-                    @click="showShareMenu = !showShareMenu"
-                    class="flex items-center gap-2 px-4 h-10 rounded-lg font-medium text-sm bg-primary hover:bg-primary-hover text-white shadow-md shadow-primary/20 transition-all"
-                  >
-                    <span class="material-symbols-outlined text-[20px]"
-                      >add</span
-                    >
-                    <span class="hidden sm:inline">Paylaş</span>
-                    <span
-                      class="material-symbols-outlined text-[16px]"
-                      x-text="showShareMenu ? 'expand_less' : 'expand_more'"
-                    ></span>
-                  </button>
-
-                  <!-- Dropdown Menu -->
-                  <div
-                    x-show="showShareMenu"
-                    @click.away="showShareMenu = false"
-                    x-transition:enter="transition ease-out duration-100"
-                    x-transition:enter-start="transform opacity-0 scale-95"
-                    x-transition:enter-end="transform opacity-100 scale-100"
-                    x-transition:leave="transition ease-in duration-75"
-                    x-transition:leave-start="transform opacity-100 scale-100"
-                    x-transition:leave-end="transform opacity-0 scale-95"
-                    class="absolute bottom-full left-0 mb-2 w-48 bg-surface-dark border border-border-dark rounded-lg shadow-xl overflow-hidden z-50"
-                  >
-                    <button
-                      @click="startCameraShare(); showShareMenu = false"
-                      class="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-hover transition-colors"
-                    >
-                      <span class="material-symbols-outlined text-primary"
-                        >videocam</span
-                      >
-                      <div class="text-left">
-                        <div class="font-medium">Kamera Paylaş</div>
-                        <div class="text-xs text-text-secondary">
-                          Ön veya arka kamera
-                        </div>
-                      </div>
-                    </button>
-                    <div class="border-t border-border-dark"></div>
-                    <button
-                      @click="startScreenShare(); showShareMenu = false"
-                      class="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-hover transition-colors"
-                    >
-                      <span class="material-symbols-outlined text-blue-400"
-                        >screen_share</span
-                      >
-                      <div class="text-left">
-                        <div class="font-medium">Ekran Paylaş</div>
-                        <div class="text-xs text-text-secondary">
-                          Desteklenmeyebilir
-                        </div>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Desktop: Direkt ekran paylaşımı -->
+              <!-- Mobile Share Menu -->
+              <div
+                x-show="showShareMenu && canShare()"
+                @click.away="showShareMenu = false"
+                x-transition
+                class="absolute bottom-full left-0 mb-2 w-44 bg-surface-dark border border-border-dark rounded-lg shadow-xl overflow-hidden z-50"
+              >
                 <button
-                  x-show="!isMobile"
-                  @click="startScreenShare()"
-                  class="flex items-center gap-2 px-4 h-10 rounded-lg font-medium text-sm bg-primary hover:bg-primary-hover text-white shadow-md shadow-primary/20 transition-all"
+                  @click="startCameraShare(); showShareMenu = false"
+                  class="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-surface-hover"
                 >
-                  <span class="material-symbols-outlined text-[20px]"
+                  <span
+                    class="material-symbols-outlined text-primary text-[18px]"
+                    >videocam</span
+                  >
+                  <span>Kamera Paylaş</span>
+                </button>
+                <div class="border-t border-border-dark"></div>
+                <button
+                  @click="startScreenShare(); showShareMenu = false"
+                  class="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-surface-hover"
+                >
+                  <span
+                    class="material-symbols-outlined text-blue-400 text-[18px]"
                     >screen_share</span
                   >
-                  <span class="hidden sm:inline">Paylaş</span>
+                  <span>Ekran Paylaş</span>
                 </button>
               </div>
             </div>
           </div>
 
-          <!-- More Options -->
-          <button
-            class="control-btn text-white p-2 md:p-3 hidden sm:block"
-            title="Diğer Seçenekler"
-          >
-            <span class="material-symbols-outlined text-[20px] md:text-[24px]"
-              >more_vert</span
-            >
-          </button>
+          <div class="w-px h-6 bg-white/10"></div>
 
-          <!-- End Call / Leave -->
+          <!-- End Call -->
           <button
             @click="isHost ? endRoom() : leaveRoom()"
-            class="control-btn danger text-white ml-1 md:ml-2 shadow-md shadow-red-500/20 p-2 md:p-3"
-            :title="isHost ? 'Odayı Sonlandır' : 'Odadan Ayrıl'"
+            class="control-btn danger text-white p-2"
           >
-            <span class="material-symbols-outlined text-[20px] md:text-[24px]"
-              >call_end</span
-            >
+            <span class="material-symbols-outlined text-[20px]">call_end</span>
           </button>
         </div>
       </div>
@@ -1467,8 +1556,14 @@
 
           // Eğer şu an paylaşımdaysak ve mevcut bir remote stream varsa, koru
           // (yeni stream bizim paylaştığımız içindir, remote stream'i overwrite etme)
-          if ((this.isScreenSharing || this.isCameraSharing) && this.remoteStream && this.remoteStream !== stream) {
-            console.log("Ignoring remote stream update while sharing, preserving existing remote stream");
+          if (
+            (this.isScreenSharing || this.isCameraSharing) &&
+            this.remoteStream &&
+            this.remoteStream !== stream
+          ) {
+            console.log(
+              "Ignoring remote stream update while sharing, preserving existing remote stream"
+            );
             return;
           }
 
@@ -1539,7 +1634,9 @@
 
         // Reconnect callback'leri
         this.webrtc.onReconnecting = (attempt, maxAttempts, delay) => {
-          console.log(`Reconnecting... ${attempt}/${maxAttempts}, delay: ${delay}ms`);
+          console.log(
+            `Reconnecting... ${attempt}/${maxAttempts}, delay: ${delay}ms`
+          );
           this.isReconnecting = true;
           this.reconnectAttempts = attempt;
           this.reconnectDelay = Math.round(delay / 1000); // saniyeye çevir
@@ -1742,9 +1839,18 @@
           this.isCameraSharing = false;
 
           // Remote presenter bilgilerini sakla (eğer başkası paylaşıyorsa)
-          const remotePresenterId = existingPresenterId !== this.currentUserId ? existingPresenterId : null;
-          const remotePresenterName = existingPresenterId !== this.currentUserId ? existingPresenterName : null;
-          const remoteShareType = existingPresenterId !== this.currentUserId ? existingShareType : null;
+          const remotePresenterId =
+            existingPresenterId !== this.currentUserId
+              ? existingPresenterId
+              : null;
+          const remotePresenterName =
+            existingPresenterId !== this.currentUserId
+              ? existingPresenterName
+              : null;
+          const remoteShareType =
+            existingPresenterId !== this.currentUserId
+              ? existingShareType
+              : null;
 
           this.currentPresenterId = this.currentUserId;
           this.currentPresenterName = "Sen";
@@ -1769,7 +1875,10 @@
                 this.$refs.remoteVideo.srcObject = existingRemoteStream;
               }
             }
-            console.log("After screen share - remoteStream:", this.remoteStream);
+            console.log(
+              "After screen share - remoteStream:",
+              this.remoteStream
+            );
           });
         } catch (e) {
           console.error("Screen share failed:", e);
@@ -1809,9 +1918,18 @@
           this.isScreenSharing = false;
 
           // Remote presenter bilgilerini sakla (eğer başkası paylaşıyorsa)
-          const remotePresenterId = existingPresenterId !== this.currentUserId ? existingPresenterId : null;
-          const remotePresenterName = existingPresenterId !== this.currentUserId ? existingPresenterName : null;
-          const remoteShareType = existingPresenterId !== this.currentUserId ? existingShareType : null;
+          const remotePresenterId =
+            existingPresenterId !== this.currentUserId
+              ? existingPresenterId
+              : null;
+          const remotePresenterName =
+            existingPresenterId !== this.currentUserId
+              ? existingPresenterName
+              : null;
+          const remoteShareType =
+            existingPresenterId !== this.currentUserId
+              ? existingShareType
+              : null;
 
           this.currentPresenterId = this.currentUserId;
           this.currentPresenterName = "Sen";
@@ -1837,7 +1955,10 @@
                 this.$refs.remoteVideo.srcObject = existingRemoteStream;
               }
             }
-            console.log("After camera share - remoteStream:", this.remoteStream);
+            console.log(
+              "After camera share - remoteStream:",
+              this.remoteStream
+            );
           });
         } catch (e) {
           console.error("Camera share failed:", e);
@@ -2413,8 +2534,11 @@
 
           // Laser pointer'ı da diğer kullanıcılara gönder
           const canvas = this.$refs.annotationCanvas;
-          const canvasWidth = this.annotationCanvasWidth || canvas.getBoundingClientRect().width;
-          const canvasHeight = this.annotationCanvasHeight || canvas.getBoundingClientRect().height;
+          const canvasWidth =
+            this.annotationCanvasWidth || canvas.getBoundingClientRect().width;
+          const canvasHeight =
+            this.annotationCanvasHeight ||
+            canvas.getBoundingClientRect().height;
 
           this.webrtc.sendAnnotation({
             tool: "laser",
@@ -2450,8 +2574,11 @@
           // Koordinatları normalize et (0-1 arasında) - farklı ekran boyutlarında çalışması için
           // CSS genişliklerini kullan (getBoundingClientRect ile aynı)
           const canvas = this.$refs.annotationCanvas;
-          const canvasWidth = this.annotationCanvasWidth || canvas.getBoundingClientRect().width;
-          const canvasHeight = this.annotationCanvasHeight || canvas.getBoundingClientRect().height;
+          const canvasWidth =
+            this.annotationCanvasWidth || canvas.getBoundingClientRect().width;
+          const canvasHeight =
+            this.annotationCanvasHeight ||
+            canvas.getBoundingClientRect().height;
 
           // Normalize edilmiş annotation verisi
           const normalizedAnnotation = {
@@ -2520,8 +2647,10 @@
 
         const canvas = this.$refs.annotationCanvas;
         // CSS genişliğini kullan (normalize edilmiş koordinatlar CSS pixel cinsinden)
-        const canvasWidth = this.annotationCanvasWidth || canvas.getBoundingClientRect().width;
-        const canvasHeight = this.annotationCanvasHeight || canvas.getBoundingClientRect().height;
+        const canvasWidth =
+          this.annotationCanvasWidth || canvas.getBoundingClientRect().width;
+        const canvasHeight =
+          this.annotationCanvasHeight || canvas.getBoundingClientRect().height;
 
         // Normalize edilmiş koordinatları local canvas boyutuna çevir
         const fromX = data.fromX * canvasWidth;
@@ -2530,7 +2659,12 @@
         const toY = data.toY * canvasHeight;
 
         console.log("Remote annotation received:", {
-          normalized: { fromX: data.fromX, fromY: data.fromY, toX: data.toX, toY: data.toY },
+          normalized: {
+            fromX: data.fromX,
+            fromY: data.fromY,
+            toX: data.toX,
+            toY: data.toY,
+          },
           local: { fromX, fromY, toX, toY },
           canvasSize: { width: canvasWidth, height: canvasHeight },
           tool: data.tool,
@@ -2647,7 +2781,10 @@
       async downloadFile(file) {
         try {
           // WebRTC manager üzerinden indir (file_id ile)
-          await this.webrtc.downloadFile(file.id || file.file_id, file.name || file.filename);
+          await this.webrtc.downloadFile(
+            file.id || file.file_id,
+            file.name || file.filename
+          );
         } catch (e) {
           console.error("Download error:", e);
           alert("Dosya indirilemedi: " + (e.message || "Bilinmeyen hata"));
@@ -2661,7 +2798,9 @@
       },
 
       showReconnectFailedModal() {
-        alert("Bağlantı kurulamadı. Lütfen sayfayı yenileyin veya internet bağlantınızı kontrol edin.");
+        alert(
+          "Bağlantı kurulamadı. Lütfen sayfayı yenileyin veya internet bağlantınızı kontrol edin."
+        );
       },
 
       showConnectionFailedModal() {
@@ -2672,10 +2811,13 @@
       showToast(message, type = "info") {
         const toast = document.createElement("div");
         toast.className = `fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-white font-medium text-sm transform transition-all duration-300 translate-x-full ${
-          type === "success" ? "bg-green-500" :
-          type === "error" ? "bg-red-500" :
-          type === "warning" ? "bg-yellow-500" :
-          "bg-blue-500"
+          type === "success"
+            ? "bg-green-500"
+            : type === "error"
+            ? "bg-red-500"
+            : type === "warning"
+            ? "bg-yellow-500"
+            : "bg-blue-500"
         }`;
         toast.textContent = message;
         document.body.appendChild(toast);
