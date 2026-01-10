@@ -2,7 +2,7 @@ import secrets
 import string
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import select
+from sqlalchemy import select, text
 from app.config import settings
 from app.utils.logging_config import database_logger
 
@@ -42,6 +42,30 @@ async def get_db():
             await session.close()
 
 
+async def run_migrations(conn):
+    """
+    Manuel migration'lar - eksik kolonları ekle.
+    Alembic kullanmadan basit migration.
+    """
+    migrations = [
+        # users.must_change_password kolonu
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'users' AND column_name = 'must_change_password'
+            ) THEN
+                ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT FALSE;
+            END IF;
+        END $$;
+        """,
+    ]
+    
+    for migration in migrations:
+        await conn.execute(text(migration))
+
+
 async def init_db():
     from app.models.user import User
     from app.models.diagram import Diagram
@@ -50,7 +74,11 @@ async def init_db():
     database_logger.info("Initializing database...")
 
     async with engine.begin() as conn:
+        # Önce tabloları oluştur
         await conn.run_sync(Base.metadata.create_all)
+        # Sonra migration'ları çalıştır (eksik kolonları ekle)
+        await run_migrations(conn)
+    
     database_logger.success("Database schema created/updated")
 
     # Admin kullanıcı oluştur - environment variable'dan veya rastgele
