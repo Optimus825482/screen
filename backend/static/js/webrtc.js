@@ -46,7 +46,7 @@ class WebRTCManager {
     this.sharedFiles = [];
 
     // WebSocket Reconnect State
-    this.wsState = 'disconnected'; // disconnected, connecting, connected, reconnecting
+    this.wsState = "disconnected"; // disconnected, connecting, connected, reconnecting
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 10; // Maksimum deneme sayısı
     this.reconnectDelay = 1000; // Başlangıç gecikmesi (1s)
@@ -58,9 +58,7 @@ class WebRTCManager {
     // WebRTC ICE config - Backend API'den yüklenecek (GÜVENLİ)
     // Credentials artık backend'den geliyor, frontend'de hard-coded YOK
     this.config = {
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-      ],
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     };
   }
 
@@ -72,7 +70,7 @@ class WebRTCManager {
   // Yeniden bağlanma durumunu al
   getReconnectInfo() {
     return {
-      isReconnecting: this.wsState === 'reconnecting',
+      isReconnecting: this.wsState === "reconnecting",
       attempt: this.reconnectAttempts,
       maxAttempts: this.maxReconnectAttempts,
       delay: this.reconnectDelay,
@@ -115,17 +113,19 @@ class WebRTCManager {
   // WebSocket bağlantısı oluştur
   createWebSocketConnection(wsUrl) {
     return new Promise((resolve, reject) => {
-      this.wsState = 'connecting';
+      this.wsState = "connecting";
 
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
         console.log("WebSocket connected");
-        this.wsState = 'connected';
+        this.wsState = "connected";
 
         // Bağlantı başarılı, reconnect durumlarını sıfırla
         if (this.reconnectAttempts > 0) {
-          console.log(`WebSocket reconnected after ${this.reconnectAttempts} attempts`);
+          console.log(
+            `WebSocket reconnected after ${this.reconnectAttempts} attempts`
+          );
           this.reconnectAttempts = 0;
           this.reconnectDelay = 1000;
 
@@ -141,7 +141,7 @@ class WebRTCManager {
 
       this.ws.onclose = (event) => {
         console.log("WebSocket closed:", event.code, event.reason);
-        this.wsState = 'disconnected';
+        this.wsState = "disconnected";
         this.stopPingInterval();
 
         // Manuel disconnect değilse ve hata kodu geçici bir hata ise, yeniden bağlan
@@ -162,7 +162,7 @@ class WebRTCManager {
         console.error("WebSocket error:", error);
 
         // İlk bağlantı hatası ise reject et
-        if (this.wsState === 'connecting' && this.reconnectAttempts === 0) {
+        if (this.wsState === "connecting" && this.reconnectAttempts === 0) {
           reject(error);
         }
       };
@@ -182,8 +182,10 @@ class WebRTCManager {
   startReconnect() {
     // Maksimum deneme sayısına ulaşıldı mı kontrol et
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error(`Max reconnect attempts (${this.maxReconnectAttempts}) reached`);
-      this.wsState = 'failed';
+      console.error(
+        `Max reconnect attempts (${this.maxReconnectAttempts}) reached`
+      );
+      this.wsState = "failed";
 
       if (this.onReconnectFailed) {
         this.onReconnectFailed();
@@ -197,11 +199,11 @@ class WebRTCManager {
     }
 
     // Zaten reconnecting durumundaysak, tekrar başlatma
-    if (this.wsState === 'reconnecting') {
+    if (this.wsState === "reconnecting") {
       return;
     }
 
-    this.wsState = 'reconnecting';
+    this.wsState = "reconnecting";
     this.reconnectAttempts++;
 
     // Exponential backoff: her denemede gecikmeyi ikiye kat
@@ -211,11 +213,17 @@ class WebRTCManager {
       this.maxReconnectDelay
     );
 
-    console.log(`Reconnecting... Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}, delay: ${currentDelay}ms`);
+    console.log(
+      `Reconnecting... Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}, delay: ${currentDelay}ms`
+    );
 
     // Reconnect başlangıç callback
     if (this.onReconnecting) {
-      this.onReconnecting(this.reconnectAttempts, this.maxReconnectAttempts, currentDelay);
+      this.onReconnecting(
+        this.reconnectAttempts,
+        this.maxReconnectAttempts,
+        currentDelay
+      );
     }
 
     if (this.onConnectionStateChange) {
@@ -252,7 +260,7 @@ class WebRTCManager {
     }
     this.shouldReconnect = false;
     this.manualDisconnect = true;
-    this.wsState = 'disconnected';
+    this.wsState = "disconnected";
   }
 
   startPingInterval() {
@@ -350,6 +358,18 @@ class WebRTCManager {
           console.log("Received request_offer from:", data.from);
           await this.createOfferForUser(data.from);
         }
+        // Eğer karşı taraf da presenter ise ve biz henüz onun stream'ini almadıysak, biz de offer isteyelim
+        if (
+          this.presenters[data.from] &&
+          !this.remoteStreams.has(data.from) &&
+          data.from !== this.myUserId
+        ) {
+          console.log("Also requesting offer from presenter:", data.from);
+          // Küçük bir gecikme ile gönder (race condition önlemek için)
+          setTimeout(() => {
+            this.send({ type: "request_offer", target: data.from });
+          }, 100);
+        }
         break;
 
       case "offer":
@@ -404,8 +424,13 @@ class WebRTCManager {
           this.createPeerConnection(data.presenter_id);
         }
 
-        // Presenter'dan offer iste (biz paylaşmıyorsak)
-        if (!this.isScreenSharing && !this.isCameraSharing) {
+        // Yeni presenter'dan offer iste (kendimiz değilsek)
+        // NOT: Biz de paylaşıyor olsak bile, diğer presenter'ın stream'ini almak için offer istememiz gerekiyor
+        if (data.presenter_id !== this.myUserId) {
+          console.log(
+            "Requesting offer from new presenter:",
+            data.presenter_id
+          );
           this.send({ type: "request_offer", target: data.presenter_id });
         }
         break;
@@ -942,7 +967,9 @@ class WebRTCManager {
         // Track bittiğinde stream'i kontrol et, stream aktif değilse kaldır
         const storedStream = this.remoteStreams.get(userId);
         if (storedStream) {
-          const activeTracks = storedStream.getTracks().filter(t => t.readyState === 'live');
+          const activeTracks = storedStream
+            .getTracks()
+            .filter((t) => t.readyState === "live");
           if (activeTracks.length === 0) {
             console.log(`All tracks ended for ${userId}, removing stream`);
             this.remoteStreams.delete(userId);
@@ -973,12 +1000,22 @@ class WebRTCManager {
         this.onConnectionStateChange(pc.connectionState, userId);
       }
       // Connection failed veya disconnected ise temizlik yap
-      if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-        console.log(`Connection ${pc.connectionState} for ${userId}, cleaning up resources`);
+      if (
+        pc.connectionState === "failed" ||
+        pc.connectionState === "disconnected"
+      ) {
+        console.log(
+          `Connection ${pc.connectionState} for ${userId}, cleaning up resources`
+        );
         // Pending ICE candidates'ı temizle
-        if (this.pendingIceCandidates && this.pendingIceCandidates.has(userId)) {
+        if (
+          this.pendingIceCandidates &&
+          this.pendingIceCandidates.has(userId)
+        ) {
           this.pendingIceCandidates.delete(userId);
-          console.log(`Cleared pending ICE candidates for ${userId} due to ${pc.connectionState}`);
+          console.log(
+            `Cleared pending ICE candidates for ${userId} due to ${pc.connectionState}`
+          );
         }
       }
       // Connection closed ise tam temizlik
@@ -1137,7 +1174,9 @@ class WebRTCManager {
           if (candidates.length < 50) {
             candidates.push(candidate);
           } else {
-            console.warn(`ICE candidate queue full for ${fromUserId}, dropping candidate`);
+            console.warn(
+              `ICE candidate queue full for ${fromUserId}, dropping candidate`
+            );
           }
         }
       } catch (e) {
