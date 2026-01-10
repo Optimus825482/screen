@@ -7,13 +7,17 @@ import uuid
 import asyncio
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.routers.auth import get_current_user
 from app.models.user import User
 from app.config import settings
+from app.utils.rate_limit import rate_limit
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/files", tags=["Files"])
 
@@ -50,14 +54,14 @@ async def cleanup_old_files():
                         if os.path.exists(filepath):
                             os.remove(filepath)
                     except Exception as e:
-                        print(f"Error deleting file {filepath}: {e}")
+                        logger.error(f"Error deleting file {filepath}: {e}")
                     del temp_files[file_id]
 
             if expired_ids:
-                print(f"Cleaned up {len(expired_ids)} expired files")
+                logger.info(f"Cleaned up {len(expired_ids)} expired files")
 
         except Exception as e:
-            print(f"Error in cleanup task: {e}")
+            logger.error(f"Error in cleanup task: {e}")
 
         # 5 dakikada bir kontrol et
         await asyncio.sleep(300)
@@ -74,7 +78,9 @@ def start_cleanup_task():
 
 
 @router.post("/upload")
+@rate_limit(limit=10, window=60, identifier="upload_file")
 async def upload_file(
+    request: Request,
     file: UploadFile = File(...),
     room_id: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
@@ -84,6 +90,7 @@ async def upload_file(
     Multipart file upload endpoint.
     Dosya boyutu kontrolü backend'de yapılır.
     Upload edilen dosyalar temporary storage'a kaydedilir.
+    - 10 istek / dakika
     """
     await ensure_temp_dir()
 
@@ -138,12 +145,15 @@ async def upload_file(
 
 
 @router.get("/download/{file_id}")
+@rate_limit(limit=30, window=60, identifier="download_file")
 async def download_file(
+    request: Request,
     file_id: str,
     current_user: User = Depends(get_current_user)
 ):
     """
     Dosya ID'sinden dosyayı indir.
+    - 30 istek / dakika
     """
     file_info = temp_files.get(file_id)
 
@@ -171,12 +181,15 @@ async def download_file(
 
 
 @router.get("/info/{file_id}")
+@rate_limit(limit=60, window=60, identifier="get_file_info")
 async def get_file_info(
+    request: Request,
     file_id: str,
     current_user: User = Depends(get_current_user)
 ):
     """
     Dosya bilgisini getir (download olmadan)
+    - 60 istek / dakika
     """
     file_info = temp_files.get(file_id)
 
@@ -196,12 +209,15 @@ async def get_file_info(
 
 
 @router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+@rate_limit(limit=20, window=60, identifier="delete_file")
 async def delete_file(
+    request: Request,
     file_id: str,
     current_user: User = Depends(get_current_user)
 ):
     """
     Dosyayı manuel olarak sil
+    - 20 istek / dakika
     """
     file_info = temp_files.get(file_id)
 

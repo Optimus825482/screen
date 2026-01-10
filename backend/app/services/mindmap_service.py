@@ -7,6 +7,7 @@ from typing import Optional
 from io import BytesIO
 import tempfile
 import os
+from app.utils.logging_config import mindmap_logger
 
 
 class MindmapService:

@@ -7,6 +7,7 @@ from app.database import get_db, async_session
 from app.services.auth_service import AuthService
 from app.services.room_service import RoomService
 from app.services.diagram_service import DiagramService
+from app.services.redis_state import get_redis_state
 from app.routers.rooms import get_guest_session, remove_guest_session
 from app.utils.logging_config import websocket_logger, get_logger
 from app.error_handlers import WebSocketErrorHandler
@@ -16,35 +17,50 @@ logger = get_logger(__name__)
 
 router = APIRouter(tags=["WebSocket"])
 
+# Redis state service singleton
+redis_state = get_redis_state()
+
 
 class ConnectionManager:
-    """WebRTC Signaling ve Chat için bağlantı yöneticisi"""
+    """
+    WebRTC Signaling ve Chat için bağlantı yöneticisi.
+
+    Redis ile entegre çalışır:
+    - WebSocket bağlantıları yerel memory'de tutulur (process-local)
+    - State bilgisi (usernames, guests, presenters, shared_files) Redis'te tutulur
+    - Çoklu instance deployment için cross-instance senkronizasyon
+    """
 
     def __init__(self):
-        # room_id -> {user_id -> WebSocket}
+        # room_id -> {user_id -> WebSocket} (sadece yerel bağlantılar)
         self.rooms: Dict[str, Dict[str, WebSocket]] = {}
-        # user_id -> username
-        self.usernames: Dict[str, str] = {}
-        # user_id -> is_guest
-        self.guests: Dict[str, bool] = {}
-        # user_id -> guest_token (for cleanup)
+        # user_id -> guest_token (for cleanup - local)
         self.guest_tokens: Dict[str, str] = {}
-        # room_id -> {presenter_id -> {share_type, username}} (max 2 presenter)
-        self.presenters: Dict[str, Dict[str, dict]] = {}
-        # room_id -> [shared_files]
-        self.shared_files: Dict[str, list] = {}
 
     async def connect(self, websocket: WebSocket, room_id: str, user_id: str, username: str, is_guest: bool = False, guest_token: str = None):
+        """Kullanıcıyı odaya bağla - Redis state'e kaydet."""
         await websocket.accept()
+
+        # Yerel bağlantı kaydı
         if room_id not in self.rooms:
             self.rooms[room_id] = {}
-            self.presenters[room_id] = {}
-            self.shared_files[room_id] = []
+
         self.rooms[room_id][user_id] = websocket
-        self.usernames[user_id] = username
-        self.guests[user_id] = is_guest
+
+        # Guest token yerel olarak sakla (cleanup için)
         if guest_token:
             self.guest_tokens[user_id] = guest_token
+
+        # Redis state'e kaydet
+        await redis_state.ws_add_to_room(room_id, user_id, username, is_guest)
+
+        # Cross-instance broadcast (diğer instance'lara bildir)
+        await redis_state.publish_message(room_id, {
+            "type": "user_joined_broadcast",
+            "user_id": user_id,
+            "username": username,
+            "is_guest": is_guest
+        })
 
         websocket_logger.info(
             f"User connected to room",
@@ -56,27 +72,25 @@ class ConnectionManager:
                 "room_participants": len(self.rooms[room_id])
             }
         )
-    
-    def disconnect(self, room_id: str, user_id: str):
-        username = self.usernames.get(user_id, "unknown")
+
+    async def disconnect(self, room_id: str, user_id: str):
+        """Kullanıcıyı odadan çıkar - Redis state'den sil."""
+        # Önce username'i al (log için)
+        username = await redis_state.ws_get_username(user_id)
+
+        # Yerel bağlantıdan çıkar
         if room_id in self.rooms and user_id in self.rooms[room_id]:
             del self.rooms[room_id][user_id]
             if not self.rooms[room_id]:
                 del self.rooms[room_id]
-                if room_id in self.presenters:
-                    del self.presenters[room_id]
-                if room_id in self.shared_files:
-                    del self.shared_files[room_id]
-        # Presenter listesinden çıkar
-        if room_id in self.presenters and user_id in self.presenters[room_id]:
-            del self.presenters[room_id][user_id]
-        if user_id in self.usernames:
-            del self.usernames[user_id]
-        if user_id in self.guests:
-            del self.guests[user_id]
+
+        # Redis state'den çıkar
+        await redis_state.ws_remove_from_room(room_id, user_id)
+        await redis_state.ws_remove_presenter(room_id, user_id)
+
         # Guest token cleanup
         if user_id in self.guest_tokens:
-            remove_guest_session(self.guest_tokens[user_id])
+            await remove_guest_session(self.guest_tokens[user_id])
             del self.guest_tokens[user_id]
 
         # Rate limit cleanup
@@ -87,43 +101,46 @@ class ConnectionManager:
             extra={
                 "room_id": room_id,
                 "user_id": user_id,
-                "username": username
+                "username": username or "unknown"
             }
         )
-    
-    def add_presenter(self, room_id: str, user_id: str, username: str, share_type: str) -> bool:
-        """Presenter ekle, max 2 presenter kontrolü yapar"""
-        if room_id not in self.presenters:
-            self.presenters[room_id] = {}
-        if len(self.presenters[room_id]) >= 2 and user_id not in self.presenters[room_id]:
+
+    async def add_presenter(self, room_id: str, user_id: str, username: str, share_type: str) -> bool:
+        """Presenter ekle, max 2 presenter kontrolü yapar - Redis state."""
+        # Mevcut presenter sayısını kontrol et
+        presenter_count = await redis_state.ws_get_presenter_count(room_id)
+
+        # Mevcut presenter'ları al
+        presenters = await redis_state.ws_get_presenters(room_id)
+
+        if presenter_count >= 2 and user_id not in presenters:
             return False  # Max 2 presenter
-        self.presenters[room_id][user_id] = {"username": username, "share_type": share_type}
+
+        await redis_state.ws_add_presenter(room_id, user_id, username, share_type)
         return True
-    
-    def remove_presenter(self, room_id: str, user_id: str):
-        """Presenter'ı kaldır"""
-        if room_id in self.presenters and user_id in self.presenters[room_id]:
-            del self.presenters[room_id][user_id]
-    
-    def get_presenters(self, room_id: str) -> dict:
-        """Odadaki presenter'ları döndür"""
-        return self.presenters.get(room_id, {})
-    
-    def add_shared_file(self, room_id: str, file_info: dict):
-        """Paylaşılan dosya ekle"""
-        if room_id not in self.shared_files:
-            self.shared_files[room_id] = []
-        self.shared_files[room_id].append(file_info)
-    
-    def get_shared_files(self, room_id: str) -> list:
-        """Paylaşılan dosyaları döndür"""
-        return self.shared_files.get(room_id, [])
-    
+
+    async def remove_presenter(self, room_id: str, user_id: str):
+        """Presenter'ı kaldır - Redis state."""
+        await redis_state.ws_remove_presenter(room_id, user_id)
+
+    async def get_presenters(self, room_id: str) -> dict:
+        """Odadaki presenter'ları döndür - Redis state."""
+        return await redis_state.ws_get_presenters(room_id)
+
+    async def add_shared_file(self, room_id: str, file_info: dict):
+        """Paylaşılan dosya ekle - Redis state."""
+        await redis_state.ws_add_shared_file(room_id, file_info)
+
+    async def get_shared_files(self, room_id: str) -> list:
+        """Paylaşılan dosyaları döndür - Redis state."""
+        return await redis_state.ws_get_shared_files(room_id)
+
     async def send_personal(self, message: dict, websocket: WebSocket):
+        """Kişisel mesaj gönder."""
         await websocket.send_json(message)
-    
+
     async def broadcast_to_room(self, room_id: str, message: dict, exclude_user: str = None):
-        """Odadaki tum kullanicilara mesaj gonder, basarisiz olanlari logla"""
+        """Odadaki tum kullanicilara mesaj gonder (yerel + cross-instance)."""
         if room_id not in self.rooms:
             return
 
@@ -152,9 +169,16 @@ class ConnectionManager:
                     "failed_count": len(failed_users)
                 }
             )
+
+        # Cross-instance broadcast (diğer instance'lardaki kullanıcılara)
+        await redis_state.publish_message(room_id, {
+            "type": "room_broadcast",
+            "message": message,
+            "exclude_user": exclude_user
+        })
     
     async def send_to_user(self, room_id: str, target_user_id: str, message: dict):
-        """Belirli bir kullaniciya mesaj gonder, hata durumunda logla"""
+        """Belirli bir kullaniciya mesaj gonder, hata durumunda logla."""
         if room_id not in self.rooms:
             websocket_logger.warning(
                 f"Room not found for send_to_user",
@@ -178,18 +202,24 @@ class ConnectionManager:
                 user_id=target_user_id,
                 message_type=message.get("type", "send_to_user")
             )
-    
-    def get_room_users(self, room_id: str) -> list[dict]:
-        if room_id not in self.rooms:
-            return []
-        return [
-            {
-                "user_id": uid, 
-                "username": self.usernames.get(uid, "Unknown"),
-                "is_guest": self.guests.get(uid, False)
-            }
-            for uid in self.rooms[room_id].keys()
-        ]
+
+    async def get_room_users(self, room_id: str) -> list[dict]:
+        """Odadaki tüm kullanıcıları döndür (Redis + local)."""
+        # Redis'ten kullanıcıları al
+        redis_users = await redis_state.ws_get_room_users(room_id)
+
+        # Yerel bağlantılar ile birleştir (duplicate'ları önle)
+        user_ids = {u["user_id"] for u in redis_users}
+        for user_id in self.rooms.get(room_id, {}).keys():
+            if user_id not in user_ids:
+                username = await redis_state.ws_get_username(user_id)
+                redis_users.append({
+                    "user_id": user_id,
+                    "username": username or "Unknown",
+                    "is_guest": False
+                })
+
+        return redis_users
 
 
 manager = ConnectionManager()
@@ -221,10 +251,10 @@ async def websocket_room(
             if user:
                 user_id = str(user.id)
                 username = user.username
-        
+
         if not user and guest_token:
             # Guest token kontrolü
-            guest_session = get_guest_session(guest_token)
+            guest_session = await get_guest_session(guest_token)
             if guest_session and guest_session.get("room_id") == room_id:
                 is_guest = True
                 user_id = f"guest_{guest_token[:16]}"
@@ -247,7 +277,7 @@ async def websocket_room(
         
         # Bağlantıyı kabul et
         await manager.connect(websocket, room_id, user_id, username, is_guest, guest_token if is_guest else None)
-        
+
         # Odadaki diğer kullanıcılara bildir
         await manager.broadcast_to_room(room_id, {
             "type": "user_joined",
@@ -255,9 +285,9 @@ async def websocket_room(
             "username": username,
             "is_host": is_host,
             "is_guest": is_guest,
-            "participants": manager.get_room_users(room_id)
+            "participants": await manager.get_room_users(room_id)
         }, exclude_user=user_id)
-        
+
         # Yeni kullanıcıya mevcut katılımcıları gönder
         await manager.send_personal({
             "type": "room_state",
@@ -266,9 +296,9 @@ async def websocket_room(
             "host_id": str(room.host_id),
             "is_host": is_host,
             "is_guest": is_guest,
-            "participants": manager.get_room_users(room_id),
-            "presenters": manager.get_presenters(room_id),
-            "shared_files": manager.get_shared_files(room_id)
+            "participants": await manager.get_room_users(room_id),
+            "presenters": await manager.get_presenters(room_id),
+            "shared_files": await manager.get_shared_files(room_id)
         }, websocket)
 
         try:
@@ -385,15 +415,15 @@ async def websocket_room(
                 elif msg_type == "screen_share_started":
                     # Biri ekran/kamera paylaşımı başlattı (max 2 presenter)
                     share_type = data.get("share_type", "screen")
-                    
+
                     # Presenter ekle (max 2 kontrolü)
-                    if manager.add_presenter(room_id, user_id, username, share_type):
+                    if await manager.add_presenter(room_id, user_id, username, share_type):
                         await manager.broadcast_to_room(room_id, {
                             "type": "screen_share_started",
                             "presenter_id": user_id,
                             "presenter_name": username,
                             "share_type": share_type,
-                            "presenters": manager.get_presenters(room_id)
+                            "presenters": await manager.get_presenters(room_id)
                         }, exclude_user=user_id)
                     else:
                         # Max presenter'a ulaşıldı
@@ -404,11 +434,11 @@ async def websocket_room(
                 
                 elif msg_type == "screen_share_stopped":
                     # Paylaşım durduruldu
-                    manager.remove_presenter(room_id, user_id)
+                    await manager.remove_presenter(room_id, user_id)
                     await manager.broadcast_to_room(room_id, {
                         "type": "screen_share_stopped",
                         "presenter_id": user_id,
-                        "presenters": manager.get_presenters(room_id)
+                        "presenters": await manager.get_presenters(room_id)
                     }, exclude_user=user_id)
                 
                 elif msg_type == "annotation":
@@ -443,7 +473,7 @@ async def websocket_room(
                             "sender_name": username,
                             "timestamp": data.get("timestamp")
                         }
-                        manager.add_shared_file(room_id, shared_file)
+                        await manager.add_shared_file(room_id, shared_file)
                         await manager.broadcast_to_room(room_id, {
                             "type": "file_shared",
                             **shared_file
@@ -533,7 +563,7 @@ async def websocket_room(
                 
                 elif msg_type == "end_room":
                     # Host odayı sonlandırıyor
-                    if is_host:
+                    if is_host and user is not None:
                         await manager.broadcast_to_room(room_id, {
                             "type": "room_ended",
                             "reason": "Host odayı sonlandırdı"
@@ -568,13 +598,13 @@ async def websocket_room(
                 }
             )
         finally:
-            manager.disconnect(room_id, user_id)
+            await manager.disconnect(room_id, user_id)
             # Diğer kullanıcılara bildir
             await manager.broadcast_to_room(room_id, {
                 "type": "user_left",
                 "user_id": user_id,
                 "username": username,
-                "participants": manager.get_room_users(room_id)
+                "participants": await manager.get_room_users(room_id)
             })
 
 

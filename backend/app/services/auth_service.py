@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User
 from app.schemas.auth import UserCreate
 from app.utils.security import hash_password, verify_password, create_tokens, decode_token
+from app.utils.logging_config import auth_logger
 
 
 class AuthService:
@@ -42,22 +43,35 @@ class AuthService:
         """Username ile authenticate"""
         user = await self.get_user_by_username(username)
         if not user or not verify_password(password, user.password_hash):
+            auth_logger.warning(f"Failed authentication attempt for username: {username}")
             return None
+        auth_logger.info(f"User authenticated successfully: {username}")
         return user
     
-    def create_user_tokens(self, user: User) -> dict[str, str]:
+    def create_user_tokens(self, user: User) -> dict[str, str | bool]:
+        """Create access and refresh tokens for user."""
         tokens = create_tokens(str(user.id), user.role)
-        tokens["role"] = user.role
-        return tokens
+        return {
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens["refresh_token"],
+            "token_type": tokens["token_type"],
+            "role": user.role,
+            "must_change_password": user.must_change_password
+        }
     
     async def get_user_from_token(self, token: str) -> User | None:
         payload = decode_token(token)
         if not payload or payload.get("type") != "access":
+            auth_logger.warning("Invalid or expired access token")
             return None
         user_id = payload.get("sub")
         if not user_id:
+            auth_logger.warning("Token missing subject (user_id)")
             return None
-        return await self.get_user_by_id(UUID(user_id))
+        user = await self.get_user_by_id(UUID(user_id))
+        if user:
+            auth_logger.debug(f"User retrieved from token: {user.username}")
+        return user
     
     async def refresh_tokens(self, refresh_token: str) -> dict[str, str] | None:
         payload = decode_token(refresh_token)

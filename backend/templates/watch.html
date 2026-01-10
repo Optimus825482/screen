@@ -365,29 +365,11 @@ endblock %} {% block content %}
       localScreenStream: null,
       screenPeerConnections: new Map(),
 
+      // WebRTC ICE config - Backend API'den yüklenecek (GÜVENLİ)
+      // Credentials artık backend'den geliyor, frontend'de hard-coded YOK
       iceConfig: {
         iceServers: [
-          { urls: "stun:stun.relay.metered.ca:80" },
-          {
-            urls: "turn:standard.relay.metered.ca:80",
-            username: "a00785389f1b29a83ff4325a",
-            credential: "s5K3Fmbw9JY4snea",
-          },
-          {
-            urls: "turn:standard.relay.metered.ca:80?transport=tcp",
-            username: "a00785389f1b29a83ff4325a",
-            credential: "s5K3Fmbw9JY4snea",
-          },
-          {
-            urls: "turn:standard.relay.metered.ca:443",
-            username: "a00785389f1b29a83ff4325a",
-            credential: "s5K3Fmbw9JY4snea",
-          },
-          {
-            urls: "turns:standard.relay.metered.ca:443?transport=tcp",
-            username: "a00785389f1b29a83ff4325a",
-            credential: "s5K3Fmbw9JY4snea",
-          },
+          { urls: "stun:stun.l.google.com:19302" },
         ],
       },
 
@@ -412,13 +394,13 @@ endblock %} {% block content %}
       },
 
       async fetchIceConfig() {
+        // Backend API'den al (API key server-side olarak yönetilir - GÜVENLİ)
         try {
-          const response = await fetch(
-            "https://erkan.metered.live/api/v1/turn/credentials?apiKey=a2278584590ae2fd0bf60959fe0fecb7e3a7"
-          );
+          const response = await fetch("/api/rooms/ice-config");
           if (response.ok) {
-            const iceServers = await response.json();
-            this.iceConfig = { iceServers };
+            const data = await response.json();
+            this.iceConfig = data;
+            console.log("ICE config loaded from backend");
           }
         } catch (e) {
           console.warn("ICE config fetch failed, using defaults");

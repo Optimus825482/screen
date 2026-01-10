@@ -17,14 +17,15 @@ services:
       - CORS_ORIGINS=["https://screen.erkanerdem.net","http://localhost:8000"]
       # Public URL
       - PUBLIC_URL=https://screen.erkanerdem.net
-      # Metered TURN Server
-      - METERED_API_KEY=${METERED_API_KEY:-a2278584590ae2fd0bf60959fe0fecb7e3a7}
-      - METERED_API_URL=https://erkan.metered.live/api/v1/turn/credentials
+      # Metered TURN Server - Get your API key from https://www.metered.ca/
+      # SECURITY: Never expose these values in public repositories
+      - METERED_API_KEY=${METERED_API_KEY}
+      - METERED_API_URL=${METERED_API_URL:-https://your-app.metered.live/api/v1/turn/credentials}
       - STUN_SERVER=stun:stun.relay.metered.ca:80
       - TURN_SERVER=turn:standard.relay.metered.ca:443
       - TURN_SERVER_TCP=turns:standard.relay.metered.ca:443?transport=tcp
-      - TURN_USERNAME=${TURN_USERNAME:-a00785389f1b29a83ff4325a}
-      - TURN_CREDENTIAL=${TURN_CREDENTIAL:-s5K3Fmbw9JY4snea}
+      - TURN_USERNAME=${TURN_USERNAME}
+      - TURN_CREDENTIAL=${TURN_CREDENTIAL}
       # Debug
       - DEBUG=false
     depends_on:

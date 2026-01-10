@@ -243,14 +243,30 @@
         ></span>
       </div>
       <!-- Connection Status -->
-      <div
-        class="flex items-center gap-2 bg-surface-dark px-2 md:px-3 py-1 md:py-1.5 rounded-lg border border-border-dark"
-      >
-        <span
-          class="material-symbols-outlined text-[16px] md:text-[18px]"
-          :class="connected ? 'text-green-500' : 'text-red-500'"
-          x-text="connected ? 'signal_cellular_alt' : 'signal_cellular_off'"
-        ></span>
+      <div class="flex items-center gap-2">
+        <!-- Reconnecting Indicator -->
+        <div
+          x-show="isReconnecting"
+          x-transition.opacity
+          class="flex items-center gap-2 bg-yellow-500/20 px-2 md:px-3 py-1 md:py-1.5 rounded-lg border border-yellow-500/50"
+        >
+          <span class="material-symbols-outlined text-[16px] md:text-[18px] text-yellow-500 animate-spin">sync</span>
+          <span class="text-[10px] md:text-xs font-medium text-yellow-500" x-text="reconnectText"></span>
+        </div>
+        <!-- Connection Status -->
+        <div
+          class="flex items-center gap-2 bg-surface-dark px-2 md:px-3 py-1 md:py-1.5 rounded-lg border border-border-dark"
+        >
+          <span
+            class="material-symbols-outlined text-[16px] md:text-[18px]"
+            :class="{
+              'text-green-500': connected && !isReconnecting,
+              'text-yellow-500 animate-pulse': isReconnecting,
+              'text-red-500': !connected && !isReconnecting
+            }"
+            x-text="isReconnecting ? 'sync' : (connected ? 'signal_cellular_alt' : 'signal_cellular_off')"
+          ></span>
+        </div>
       </div>
       <!-- Mobile Sidebar Toggle -->
       <button
@@ -1320,6 +1336,12 @@
       annotationCtx: null,
       lastAnnotationX: 0,
       lastAnnotationY: 0,
+      // Annotation canvas boyutu ve DPI (senkronizasyon için)
+      annotationCanvasWidth: 0,
+      annotationCanvasHeight: 0,
+      annotationDpr: 1,
+      // Kaydedilen annotation'lar (resize sonrası yeniden çizmek için)
+      savedAnnotations: [],
       // Dosya Paylaşımı
       sharedFiles: [],
       showFilePanel: false,
@@ -1347,6 +1369,12 @@
       // Chat notification sound
       notificationSound: null,
       soundEnabled: true,
+      // WebSocket Reconnect
+      isReconnecting: false,
+      reconnectAttempts: 0,
+      maxReconnectAttempts: 10,
+      reconnectText: "",
+      reconnectDelay: 0,
 
       // Ekran paylaşabilir miyim? (çoklu presenter - max 2)
       canShare() {
@@ -1427,15 +1455,24 @@
             "active:",
             stream?.active
           );
-          this.remoteStream = stream;
 
           // Stream null ise temizle
           if (!stream) {
+            this.remoteStream = null;
             if (this.$refs.remoteVideo) {
               this.$refs.remoteVideo.srcObject = null;
             }
             return;
           }
+
+          // Eğer şu an paylaşımdaysak ve mevcut bir remote stream varsa, koru
+          // (yeni stream bizim paylaştığımız içindir, remote stream'i overwrite etme)
+          if ((this.isScreenSharing || this.isCameraSharing) && this.remoteStream && this.remoteStream !== stream) {
+            console.log("Ignoring remote stream update while sharing, preserving existing remote stream");
+            return;
+          }
+
+          this.remoteStream = stream;
 
           if (this.$refs.remoteVideo) {
             this.$refs.remoteVideo.srcObject = stream;
@@ -1484,7 +1521,47 @@
         };
 
         this.webrtc.onConnectionStateChange = (state) => {
-          this.connected = state === "connected" || state !== "disconnected";
+          console.log("Connection state changed:", state);
+          if (state === "connected") {
+            this.connected = true;
+            this.isReconnecting = false;
+          } else if (state === "disconnected") {
+            this.connected = false;
+          } else if (state === "reconnecting") {
+            this.connected = false;
+          } else if (state === "failed") {
+            this.connected = false;
+            this.isReconnecting = false;
+            // Bağlantı başarısız oldu, kullanıcıya bildir
+            this.showConnectionFailedModal();
+          }
+        };
+
+        // Reconnect callback'leri
+        this.webrtc.onReconnecting = (attempt, maxAttempts, delay) => {
+          console.log(`Reconnecting... ${attempt}/${maxAttempts}, delay: ${delay}ms`);
+          this.isReconnecting = true;
+          this.reconnectAttempts = attempt;
+          this.reconnectDelay = Math.round(delay / 1000); // saniyeye çevir
+          this.reconnectText = `Yeniden bağlanılıyor... (${attempt}/${maxAttempts})`;
+        };
+
+        this.webrtc.onReconnected = () => {
+          console.log("Reconnected successfully!");
+          this.isReconnecting = false;
+          this.reconnectAttempts = 0;
+          this.reconnectText = "";
+          this.connected = true;
+          // Bildirim göster
+          this.showReconnectedNotification();
+        };
+
+        this.webrtc.onReconnectFailed = () => {
+          console.error("Reconnect failed after max attempts");
+          this.isReconnecting = false;
+          this.reconnectText = "";
+          // Kullanıcıya son bildirimi göster
+          this.showReconnectFailedModal();
         };
 
         // Presenter değişikliği callback
@@ -1646,34 +1723,54 @@
           return;
         }
 
-        // Mevcut remote stream'i kaydet
+        // Mevcut remote stream'i ve presenter bilgisini kaydet
         const existingRemoteStream = this.remoteStream;
+        const existingPresenterId = this.currentPresenterId;
+        const existingPresenterName = this.currentPresenterName;
+        const existingShareType = this.currentShareType;
+
         console.log(
           "Before screen share - remoteStream:",
-          existingRemoteStream
+          existingRemoteStream,
+          "presenter:",
+          existingPresenterId
         );
 
         try {
           const stream = await this.webrtc.startScreenShare();
           this.isScreenSharing = true;
           this.isCameraSharing = false;
+
+          // Remote presenter bilgilerini sakla (eğer başkası paylaşıyorsa)
+          const remotePresenterId = existingPresenterId !== this.currentUserId ? existingPresenterId : null;
+          const remotePresenterName = existingPresenterId !== this.currentUserId ? existingPresenterName : null;
+          const remoteShareType = existingPresenterId !== this.currentUserId ? existingShareType : null;
+
           this.currentPresenterId = this.currentUserId;
           this.currentPresenterName = "Sen";
           this.currentShareType = "screen";
+
           if (this.$refs.localVideo) {
             this.$refs.localVideo.srcObject = stream;
           }
           this.startTimer();
 
-          // Remote stream'i geri yükle (kaybolmuşsa)
-          if (existingRemoteStream && !this.remoteStream) {
-            console.log("Restoring remote stream");
-            this.remoteStream = existingRemoteStream;
-            if (this.$refs.remoteVideo) {
-              this.$refs.remoteVideo.srcObject = existingRemoteStream;
+          // $nextTick içinde remote stream'i geri yükle
+          this.$nextTick(() => {
+            // Eğer başkası paylaşıyorsa ve remote stream kaybolmuşsa geri yükle
+            if (existingRemoteStream && remotePresenterId) {
+              console.log("Restoring remote stream from:", remotePresenterId);
+              this.remoteStream = existingRemoteStream;
+              // Remote presenter bilgisini geri yükle
+              this.currentPresenterId = remotePresenterId;
+              this.currentPresenterName = remotePresenterName;
+              this.currentShareType = remoteShareType;
+              if (this.$refs.remoteVideo) {
+                this.$refs.remoteVideo.srcObject = existingRemoteStream;
+              }
             }
-          }
-          console.log("After screen share - remoteStream:", this.remoteStream);
+            console.log("After screen share - remoteStream:", this.remoteStream);
+          });
         } catch (e) {
           console.error("Screen share failed:", e);
           if (e.message && e.message.includes("Maksimum")) {
@@ -1693,35 +1790,55 @@
           return;
         }
 
-        // Mevcut remote stream'i kaydet
+        // Mevcut remote stream'i ve presenter bilgisini kaydet
         const existingRemoteStream = this.remoteStream;
+        const existingPresenterId = this.currentPresenterId;
+        const existingPresenterName = this.currentPresenterName;
+        const existingShareType = this.currentShareType;
+
         console.log(
           "Before camera share - remoteStream:",
-          existingRemoteStream
+          existingRemoteStream,
+          "presenter:",
+          existingPresenterId
         );
 
         try {
           const stream = await this.webrtc.startCameraShare("user");
           this.isCameraSharing = true;
           this.isScreenSharing = false;
+
+          // Remote presenter bilgilerini sakla (eğer başkası paylaşıyorsa)
+          const remotePresenterId = existingPresenterId !== this.currentUserId ? existingPresenterId : null;
+          const remotePresenterName = existingPresenterId !== this.currentUserId ? existingPresenterName : null;
+          const remoteShareType = existingPresenterId !== this.currentUserId ? existingShareType : null;
+
           this.currentPresenterId = this.currentUserId;
           this.currentPresenterName = "Sen";
           this.currentShareType = "camera";
+
           if (this.$refs.localVideo) {
             this.$refs.localVideo.srcObject = stream;
           }
           this.startTimer();
           this.showShareMenu = false;
 
-          // Remote stream'i geri yükle (kaybolmuşsa)
-          if (existingRemoteStream && !this.remoteStream) {
-            console.log("Restoring remote stream");
-            this.remoteStream = existingRemoteStream;
-            if (this.$refs.remoteVideo) {
-              this.$refs.remoteVideo.srcObject = existingRemoteStream;
+          // $nextTick içinde remote stream'i geri yükle
+          this.$nextTick(() => {
+            // Eğer başkası paylaşıyorsa ve remote stream kaybolmuşsa geri yükle
+            if (existingRemoteStream && remotePresenterId) {
+              console.log("Restoring remote stream from:", remotePresenterId);
+              this.remoteStream = existingRemoteStream;
+              // Remote presenter bilgisini geri yükle
+              this.currentPresenterId = remotePresenterId;
+              this.currentPresenterName = remotePresenterName;
+              this.currentShareType = remoteShareType;
+              if (this.$refs.remoteVideo) {
+                this.$refs.remoteVideo.srcObject = existingRemoteStream;
+              }
             }
-          }
-          console.log("After camera share - remoteStream:", this.remoteStream);
+            console.log("After camera share - remoteStream:", this.remoteStream);
+          });
         } catch (e) {
           console.error("Camera share failed:", e);
           if (e.message && e.message.includes("Maksimum")) {
@@ -2155,15 +2272,99 @@
         const dpr = window.devicePixelRatio || 1;
         const rect = container.getBoundingClientRect();
 
+        // Canvas boyutlarını ayarla
         canvas.width = rect.width * dpr;
         canvas.height = rect.height * dpr;
         canvas.style.width = rect.width + "px";
         canvas.style.height = rect.height + "px";
 
+        // Boyutları kaydet (senkronizasyon için)
+        this.annotationCanvasWidth = rect.width;
+        this.annotationCanvasHeight = rect.height;
+        this.annotationDpr = dpr;
+
         this.annotationCtx = canvas.getContext("2d");
         this.annotationCtx.scale(dpr, dpr);
         this.annotationCtx.lineCap = "round";
         this.annotationCtx.lineJoin = "round";
+
+        // Resize listener ekle (debounced)
+        if (this.annotationResizeHandler) {
+          window.removeEventListener("resize", this.annotationResizeHandler);
+        }
+        this.annotationResizeHandler = this.debounce(() => {
+          this.handleAnnotationCanvasResize();
+        }, 200);
+        window.addEventListener("resize", this.annotationResizeHandler);
+      },
+
+      // Canvas resize olduğunda annotation'ları yeniden çiz
+      handleAnnotationCanvasResize() {
+        const canvas = this.$refs.annotationCanvas;
+        if (!canvas) return;
+
+        const container = canvas.parentElement;
+        const dpr = window.devicePixelRatio || 1;
+        const oldWidth = this.annotationCanvasWidth;
+        const oldHeight = this.annotationCanvasHeight;
+        const rect = container.getBoundingClientRect();
+
+        // Yeni boyutları ayarla
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        canvas.style.width = rect.width + "px";
+        canvas.style.height = rect.height + "px";
+
+        // Yeni boyutları kaydet
+        this.annotationCanvasWidth = rect.width;
+        this.annotationCanvasHeight = rect.height;
+        this.annotationDpr = dpr;
+
+        // Context'i yeniden oluştur
+        this.annotationCtx = canvas.getContext("2d");
+        this.annotationCtx.scale(dpr, dpr);
+        this.annotationCtx.lineCap = "round";
+        this.annotationCtx.lineJoin = "round";
+
+        // Kaydedilen annotation'ları yeni boyuta göre yeniden çiz
+        this.redrawAnnotations();
+      },
+
+      // Kaydedilen annotation'ları yeniden çiz
+      redrawAnnotations() {
+        if (!this.annotationCtx || this.savedAnnotations.length === 0) return;
+
+        const canvas = this.$refs.annotationCanvas;
+        const dpr = this.annotationDpr;
+        const canvasWidth = canvas.width / dpr;
+        const canvasHeight = canvas.height / dpr;
+
+        // Her annotation'ı yeni boyuta göre çiz
+        this.savedAnnotations.forEach((annotation) => {
+          const fromX = annotation.fromX * canvasWidth;
+          const fromY = annotation.fromY * canvasHeight;
+          const toX = annotation.toX * canvasWidth;
+          const toY = annotation.toY * canvasHeight;
+
+          this.annotationCtx.beginPath();
+          this.annotationCtx.moveTo(fromX, fromY);
+          this.annotationCtx.lineTo(toX, toY);
+
+          if (annotation.tool === "eraser") {
+            this.annotationCtx.globalCompositeOperation = "destination-out";
+            this.annotationCtx.lineWidth = annotation.size * 5;
+          } else if (annotation.tool === "highlight") {
+            this.annotationCtx.globalCompositeOperation = "source-over";
+            this.annotationCtx.strokeStyle = annotation.color + "40";
+            this.annotationCtx.lineWidth = annotation.size * 8;
+          } else {
+            this.annotationCtx.globalCompositeOperation = "source-over";
+            this.annotationCtx.strokeStyle = annotation.color;
+            this.annotationCtx.lineWidth = annotation.size;
+          }
+
+          this.annotationCtx.stroke();
+        });
       },
 
       getAnnotationCoords(e) {
@@ -2178,6 +2379,11 @@
           x = e.clientX - rect.left;
           y = e.clientY - rect.top;
         }
+
+        // Koordinatları canvas sınırları içinde tut
+        x = Math.max(0, Math.min(x, rect.width));
+        y = Math.max(0, Math.min(y, rect.height));
+
         return { x, y };
       },
 
@@ -2190,6 +2396,7 @@
 
         // Laser pointer için nokta çiz
         if (this.annotationTool === "laser") {
+          this.clearAnnotationCanvas();
           this.drawLaserPoint(coords.x, coords.y);
         }
       },
@@ -2203,6 +2410,22 @@
           // Laser pointer - önceki noktayı temizle, yeni nokta çiz
           this.clearAnnotationCanvas();
           this.drawLaserPoint(coords.x, coords.y);
+
+          // Laser pointer'ı da diğer kullanıcılara gönder
+          const canvas = this.$refs.annotationCanvas;
+          const canvasWidth = this.annotationCanvasWidth || canvas.getBoundingClientRect().width;
+          const canvasHeight = this.annotationCanvasHeight || canvas.getBoundingClientRect().height;
+
+          this.webrtc.sendAnnotation({
+            tool: "laser",
+            color: this.annotationColor,
+            size: this.annotationSize,
+            fromX: coords.x / canvasWidth,
+            fromY: coords.y / canvasHeight,
+            toX: coords.x / canvasWidth,
+            toY: coords.y / canvasHeight,
+            presenterId: this.currentPresenterId,
+          });
         } else {
           // Pen, highlight, eraser
           this.annotationCtx.beginPath();
@@ -2225,13 +2448,13 @@
           this.annotationCtx.stroke();
 
           // Koordinatları normalize et (0-1 arasında) - farklı ekran boyutlarında çalışması için
+          // CSS genişliklerini kullan (getBoundingClientRect ile aynı)
           const canvas = this.$refs.annotationCanvas;
-          const dpr = window.devicePixelRatio || 1;
-          const canvasWidth = canvas.width / dpr;
-          const canvasHeight = canvas.height / dpr;
+          const canvasWidth = this.annotationCanvasWidth || canvas.getBoundingClientRect().width;
+          const canvasHeight = this.annotationCanvasHeight || canvas.getBoundingClientRect().height;
 
-          // Diğer kullanıcılara gönder (normalize edilmiş koordinatlar)
-          this.webrtc.sendAnnotation({
+          // Normalize edilmiş annotation verisi
+          const normalizedAnnotation = {
             tool: this.annotationTool,
             color: this.annotationColor,
             size: this.annotationSize,
@@ -2240,7 +2463,13 @@
             toX: coords.x / canvasWidth,
             toY: coords.y / canvasHeight,
             presenterId: this.currentPresenterId,
-          });
+          };
+
+          // Diğer kullanıcılara gönder
+          this.webrtc.sendAnnotation(normalizedAnnotation);
+
+          // Local olarak da kaydet (resize sonrası yeniden çizmek için)
+          this.savedAnnotations.push(normalizedAnnotation);
         }
 
         this.lastAnnotationX = coords.x;
@@ -2274,6 +2503,8 @@
         if (!this.annotationCtx) return;
         const canvas = this.$refs.annotationCanvas;
         this.annotationCtx.clearRect(0, 0, canvas.width, canvas.height);
+        // Kaydedilen annotation'ları da temizle
+        this.savedAnnotations = [];
       },
 
       handleRemoteAnnotation(data) {
@@ -2288,9 +2519,9 @@
         if (!this.annotationCtx) return;
 
         const canvas = this.$refs.annotationCanvas;
-        const dpr = window.devicePixelRatio || 1;
-        const canvasWidth = canvas.width / dpr;
-        const canvasHeight = canvas.height / dpr;
+        // CSS genişliğini kullan (normalize edilmiş koordinatlar CSS pixel cinsinden)
+        const canvasWidth = this.annotationCanvasWidth || canvas.getBoundingClientRect().width;
+        const canvasHeight = this.annotationCanvasHeight || canvas.getBoundingClientRect().height;
 
         // Normalize edilmiş koordinatları local canvas boyutuna çevir
         const fromX = data.fromX * canvasWidth;
@@ -2299,10 +2530,9 @@
         const toY = data.toY * canvasHeight;
 
         console.log("Remote annotation received:", {
-          fromX,
-          fromY,
-          toX,
-          toY,
+          normalized: { fromX: data.fromX, fromY: data.fromY, toX: data.toX, toY: data.toY },
+          local: { fromX, fromY, toX, toY },
+          canvasSize: { width: canvasWidth, height: canvasHeight },
           tool: data.tool,
         });
 
@@ -2311,6 +2541,19 @@
           this.drawLaserPoint(toX, toY);
           setTimeout(() => this.clearAnnotationCanvas(), 500);
         } else {
+          // Remote annotation'ı da kaydet (resize sonrası yeniden çizmek için)
+          const normalizedAnnotation = {
+            tool: data.tool,
+            color: data.color,
+            size: data.size,
+            fromX: data.fromX,
+            fromY: data.fromY,
+            toX: data.toX,
+            toY: data.toY,
+            presenterId: data.presenterId,
+          };
+          this.savedAnnotations.push(normalizedAnnotation);
+
           this.annotationCtx.beginPath();
           this.annotationCtx.moveTo(fromX, fromY);
           this.annotationCtx.lineTo(toX, toY);
@@ -2409,6 +2652,46 @@
           console.error("Download error:", e);
           alert("Dosya indirilemedi: " + (e.message || "Bilinmeyen hata"));
         }
+      },
+
+      // Reconnect bildirim metodları
+      showReconnectedNotification() {
+        // Toast bildirimi göster
+        this.showToast("Bağlantı yeniden kuruldu", "success");
+      },
+
+      showReconnectFailedModal() {
+        alert("Bağlantı kurulamadı. Lütfen sayfayı yenileyin veya internet bağlantınızı kontrol edin.");
+      },
+
+      showConnectionFailedModal() {
+        alert("Bağlantı koptu. Yeniden bağlanmaya çalışılıyor...");
+      },
+
+      // Toast bildirimi göster
+      showToast(message, type = "info") {
+        const toast = document.createElement("div");
+        toast.className = `fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-white font-medium text-sm transform transition-all duration-300 translate-x-full ${
+          type === "success" ? "bg-green-500" :
+          type === "error" ? "bg-red-500" :
+          type === "warning" ? "bg-yellow-500" :
+          "bg-blue-500"
+        }`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        // Animasyonla göster
+        setTimeout(() => {
+          toast.classList.remove("translate-x-full");
+        }, 10);
+
+        // 3 saniye sonra kaldır
+        setTimeout(() => {
+          toast.classList.add("translate-x-full");
+          setTimeout(() => {
+            document.body.removeChild(toast);
+          }, 300);
+        }, 3000);
       },
     };
   }

@@ -1,0 +1,72 @@
+# ============================================================================
+# SCREENSHARE PRO - ALL-IN-ONE DOCKERFILE FOR COOLIFY
+# PostgreSQL + Redis + Python App in single container
+# ============================================================================
+
+FROM python:3.11-slim
+
+LABEL maintainer="Erkan"
+LABEL description="ScreenShare Pro - All-in-One Container for Coolify"
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    POSTGRES_USER=postgres \
+    POSTGRES_PASSWORD=screenshare2025 \
+    POSTGRES_DB=screenshare \
+    PGDATA=/var/lib/postgresql/data \
+    REDIS_PORT=6379 \
+    DATABASE_URL=postgresql+asyncpg://postgres:screenshare2025@localhost:5432/screenshare \
+    REDIS_URL=redis://localhost:6379/0 \
+    DEBUG=false
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql \
+    postgresql-contrib \
+    redis-server \
+    supervisor \
+    curl \
+    gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create directories
+RUN mkdir -p /var/lib/postgresql/data \
+    && chown -R postgres:postgres /var/lib/postgresql \
+    && chmod 700 /var/lib/postgresql/data \
+    && mkdir -p /var/lib/redis \
+    && chown -R redis:redis /var/lib/redis \
+    && mkdir -p /var/log/supervisor /var/log/postgresql /var/log/redis /app/logs \
+    && chmod -R 755 /var/log \
+    && mkdir -p /etc/supervisor/conf.d
+
+# Copy and install Python dependencies
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY backend/ .
+
+# Copy configuration files
+COPY coolify-config/supervisord.conf /etc/supervisor/supervisord.conf
+COPY coolify-config/postgresql.conf /etc/supervisor/conf.d/postgresql.conf
+COPY coolify-config/redis.conf /etc/supervisor/conf.d/redis.conf
+COPY coolify-config/app.conf /etc/supervisor/conf.d/app.conf
+COPY coolify-config/docker-entrypoint.sh /docker-entrypoint.sh
+
+RUN chmod +x /docker-entrypoint.sh
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8005/health || exit 1
+
+EXPOSE 8005
+
+VOLUME ["/var/lib/postgresql/data", "/var/lib/redis", "/app/logs"]
+
+ENTRYPOINT ["/docker-entrypoint.sh"]

@@ -9,6 +9,7 @@ from app.database import init_db
 from app.routers import auth_router, rooms_router, websocket_router, diagrams_router, mindmap_router, files_router
 from app.utils.logging_config import setup_logging, fastapi_logger
 from app.error_handlers import register_exception_handlers
+from app.middleware import RateLimitHeaderMiddleware
 
 
 @asynccontextmanager
@@ -19,6 +20,14 @@ async def lifespan(app: FastAPI):
     fastapi_logger.info(f"Starting {settings.APP_NAME}")
     await init_db()
     fastapi_logger.info("Database initialized")
+    # Initialize Redis state service
+    from app.services.redis_state import get_redis_state
+    redis_state = get_redis_state()
+    health = await redis_state.health_check()
+    if health["redis_connected"]:
+        fastapi_logger.info("Redis state service connected")
+    else:
+        fastapi_logger.warning("Redis not available, using in-memory fallback for state")
     # Start file cleanup task
     from app.routers.files import start_cleanup_task
     start_cleanup_task()
@@ -26,6 +35,10 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
     fastapi_logger.info("Shutting down application")
+    # Close Redis state service
+    from app.services.redis_state import close_redis_state
+    await close_redis_state()
+    fastapi_logger.info("Redis state service closed")
     # Close rate limiter connections
     from app.utils.rate_limit import close_rate_limiter
     await close_rate_limiter()
@@ -48,6 +61,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Rate Limit Headers Middleware (must be added after CORS)
+if settings.RATE_LIMIT_ENABLED:
+    app.add_middleware(RateLimitHeaderMiddleware)
+
 # Global Exception Handlers
 register_exception_handlers(app)
 
@@ -67,12 +84,25 @@ app.include_router(files_router)
 # Health Check
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": settings.APP_NAME}
+    from app.services.redis_state import get_redis_state
+    redis_state = get_redis_state()
+    redis_health = await redis_state.health_check()
+    return {
+        "status": "healthy",
+        "service": settings.APP_NAME,
+        "redis": redis_health
+    }
 
 
 @app.get("/ready")
 async def readiness_check():
-    return {"status": "ready"}
+    from app.services.redis_state import get_redis_state
+    redis_state = get_redis_state()
+    redis_health = await redis_state.health_check()
+    return {
+        "status": "ready",
+        "redis_connected": redis_health["redis_connected"]
+    }
 
 
 # Frontend Routes

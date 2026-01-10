@@ -1,5 +1,6 @@
 // WebRTC Manager - Ekran paylaşımı, kamera paylaşımı ve ses iletimi
 // V2: Çoklu presenter, annotation, dosya paylaşımı desteği
+// V3: WebSocket otomatik yeniden bağlanma desteği
 class WebRTCManager {
   constructor(roomId, isHost) {
     this.roomId = roomId;
@@ -26,6 +27,9 @@ class WebRTCManager {
     this.onWhiteboardClear = null;
     this.onWhiteboardStarted = null;
     this.onWhiteboardStopped = null;
+    this.onReconnecting = null; // Yeni: Reconnect başladığında
+    this.onReconnected = null; // Yeni: Reconnect başarılı olduğunda
+    this.onReconnectFailed = null; // Yeni: Reconnect başarısız olduğunda
 
     // State
     this.isScreenSharing = false;
@@ -41,12 +45,37 @@ class WebRTCManager {
     // Dosya paylaşımı
     this.sharedFiles = [];
 
+    // WebSocket Reconnect State
+    this.wsState = 'disconnected'; // disconnected, connecting, connected, reconnecting
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 10; // Maksimum deneme sayısı
+    this.reconnectDelay = 1000; // Başlangıç gecikmesi (1s)
+    this.maxReconnectDelay = 30000; // Maksimum gecikme (30s)
+    this.reconnectTimeoutId = null;
+    this.shouldReconnect = true; // Manuel disconnect edilirse false olur
+    this.manualDisconnect = false; // Kullanıcı odadan ayrıldıysa true
+
     // WebRTC ICE config - Backend API'den yüklenecek (GÜVENLİ)
     // Credentials artık backend'den geliyor, frontend'de hard-coded YOK
     this.config = {
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
       ],
+    };
+  }
+
+  // WebSocket bağlantı durumunu al
+  getConnectionState() {
+    return this.wsState;
+  }
+
+  // Yeniden bağlanma durumunu al
+  getReconnectInfo() {
+    return {
+      isReconnecting: this.wsState === 'reconnecting',
+      attempt: this.reconnectAttempts,
+      maxAttempts: this.maxReconnectAttempts,
+      delay: this.reconnectDelay,
     };
   }
 
@@ -80,30 +109,150 @@ class WebRTCManager {
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${wsProtocol}//${window.location.host}/ws/room/${this.roomId}?token=${token}`;
 
+    return this.createWebSocketConnection(wsUrl);
+  }
+
+  // WebSocket bağlantısı oluştur
+  createWebSocketConnection(wsUrl) {
     return new Promise((resolve, reject) => {
+      this.wsState = 'connecting';
+
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
         console.log("WebSocket connected");
+        this.wsState = 'connected';
+
+        // Bağlantı başarılı, reconnect durumlarını sıfırla
+        if (this.reconnectAttempts > 0) {
+          console.log(`WebSocket reconnected after ${this.reconnectAttempts} attempts`);
+          this.reconnectAttempts = 0;
+          this.reconnectDelay = 1000;
+
+          // Reconnect başarılı callback
+          if (this.onReconnected) {
+            this.onReconnected();
+          }
+        }
+
         this.startPingInterval();
         resolve(true);
       };
 
       this.ws.onclose = (event) => {
         console.log("WebSocket closed:", event.code, event.reason);
+        this.wsState = 'disconnected';
         this.stopPingInterval();
-        if (this.onConnectionStateChange) {
-          this.onConnectionStateChange("disconnected");
+
+        // Manuel disconnect değilse ve hata kodu geçici bir hata ise, yeniden bağlan
+        // 1000: Normal close, 4001: Kicked, 4002: Room ended (manuel disconnect)
+        const isManualClose = event.code === 1000 || event.code >= 4000;
+
+        if (!isManualClose && !this.manualDisconnect && this.shouldReconnect) {
+          this.startReconnect();
+        } else {
+          // Manuel disconnect veya kalıcı hata
+          if (this.onConnectionStateChange) {
+            this.onConnectionStateChange("disconnected");
+          }
         }
       };
 
       this.ws.onerror = (error) => {
         console.error("WebSocket error:", error);
-        reject(error);
+
+        // İlk bağlantı hatası ise reject et
+        if (this.wsState === 'connecting' && this.reconnectAttempts === 0) {
+          reject(error);
+        }
       };
 
-      this.ws.onmessage = (event) => this.handleMessage(JSON.parse(event.data));
+      this.ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.handleMessage(data);
+        } catch (e) {
+          console.error("Failed to parse WebSocket message:", e);
+        }
+      };
     });
+  }
+
+  // Exponential backoff ile yeniden bağlan
+  startReconnect() {
+    // Maksimum deneme sayısına ulaşıldı mı kontrol et
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error(`Max reconnect attempts (${this.maxReconnectAttempts}) reached`);
+      this.wsState = 'failed';
+
+      if (this.onReconnectFailed) {
+        this.onReconnectFailed();
+      }
+
+      if (this.onConnectionStateChange) {
+        this.onConnectionStateChange("failed");
+      }
+
+      return;
+    }
+
+    // Zaten reconnecting durumundaysak, tekrar başlatma
+    if (this.wsState === 'reconnecting') {
+      return;
+    }
+
+    this.wsState = 'reconnecting';
+    this.reconnectAttempts++;
+
+    // Exponential backoff: her denemede gecikmeyi ikiye kat
+    // 1s, 2s, 4s, 8s, 16s, 30s (max)
+    const currentDelay = Math.min(
+      this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
+      this.maxReconnectDelay
+    );
+
+    console.log(`Reconnecting... Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}, delay: ${currentDelay}ms`);
+
+    // Reconnect başlangıç callback
+    if (this.onReconnecting) {
+      this.onReconnecting(this.reconnectAttempts, this.maxReconnectAttempts, currentDelay);
+    }
+
+    if (this.onConnectionStateChange) {
+      this.onConnectionStateChange("reconnecting");
+    }
+
+    // Belirtilen süre sonra yeniden bağlanmayı dene
+    this.reconnectTimeoutId = setTimeout(async () => {
+      const token = Auth.getToken();
+      if (!token) {
+        console.error("No token for reconnect");
+        this.startReconnect();
+        return;
+      }
+
+      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${wsProtocol}//${window.location.host}/ws/room/${this.roomId}?token=${token}`;
+
+      try {
+        await this.createWebSocketConnection(wsUrl);
+      } catch (e) {
+        console.error("Reconnect failed:", e);
+        // Başarısız olursa tekrar dene
+        this.startReconnect();
+      }
+    }, currentDelay);
+  }
+
+  // Reconnect'i iptal et (manuel disconnect için)
+  cancelReconnect() {
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+    this.shouldReconnect = false;
+    this.manualDisconnect = true;
+    this.wsState = 'disconnected';
   }
 
   startPingInterval() {
@@ -779,12 +928,26 @@ class WebRTCManager {
       );
       const stream = event.streams[0];
 
+      if (!stream) {
+        console.warn(`No stream in ontrack event from ${userId}`);
+        return;
+      }
+
       // Stream'i sakla (çoklu presenter için)
       this.remoteStreams.set(userId, stream);
 
       // Track event listeners ekle
       event.track.onended = () => {
         console.log(`Track ended from ${userId}:`, event.track.kind);
+        // Track bittiğinde stream'i kontrol et, stream aktif değilse kaldır
+        const storedStream = this.remoteStreams.get(userId);
+        if (storedStream) {
+          const activeTracks = storedStream.getTracks().filter(t => t.readyState === 'live');
+          if (activeTracks.length === 0) {
+            console.log(`All tracks ended for ${userId}, removing stream`);
+            this.remoteStreams.delete(userId);
+          }
+        }
       };
       event.track.onmute = () => {
         console.log(`Track muted from ${userId}:`, event.track.kind);
@@ -793,8 +956,14 @@ class WebRTCManager {
         console.log(`Track unmuted from ${userId}:`, event.track.kind);
       };
 
+      // Eski callback: tek stream (geriye uyumluluk)
       if (this.onRemoteStream) {
         this.onRemoteStream(stream);
+      }
+
+      // Yeni callback: tüm presenter stream'leri
+      if (this.onRemoteStreams) {
+        this.onRemoteStreams(this.remoteStreams);
       }
     };
 
@@ -802,6 +971,19 @@ class WebRTCManager {
       console.log(`Connection state with ${userId}:`, pc.connectionState);
       if (this.onConnectionStateChange) {
         this.onConnectionStateChange(pc.connectionState, userId);
+      }
+      // Connection failed veya disconnected ise temizlik yap
+      if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+        console.log(`Connection ${pc.connectionState} for ${userId}, cleaning up resources`);
+        // Pending ICE candidates'ı temizle
+        if (this.pendingIceCandidates && this.pendingIceCandidates.has(userId)) {
+          this.pendingIceCandidates.delete(userId);
+          console.log(`Cleared pending ICE candidates for ${userId} due to ${pc.connectionState}`);
+        }
+      }
+      // Connection closed ise tam temizlik
+      if (pc.connectionState === "closed") {
+        this.cleanupUserResources(userId);
       }
     };
 
@@ -950,7 +1132,13 @@ class WebRTCManager {
           if (!this.pendingIceCandidates.has(fromUserId)) {
             this.pendingIceCandidates.set(fromUserId, []);
           }
-          this.pendingIceCandidates.get(fromUserId).push(candidate);
+          // Memory leak koruması: Maksimum 50 candidate sakla
+          const candidates = this.pendingIceCandidates.get(fromUserId);
+          if (candidates.length < 50) {
+            candidates.push(candidate);
+          } else {
+            console.warn(`ICE candidate queue full for ${fromUserId}, dropping candidate`);
+          }
         }
       } catch (e) {
         console.warn("Video ICE candidate error:", e);
@@ -975,6 +1163,23 @@ class WebRTCManager {
     if (pc) {
       pc.close();
       this.peerConnections.delete(userId);
+    }
+
+    // Pending ICE candidates'ı temizle
+    if (this.pendingIceCandidates && this.pendingIceCandidates.has(userId)) {
+      this.pendingIceCandidates.delete(userId);
+      console.log(`Cleared pending ICE candidates for ${userId}`);
+    }
+
+    // Remote stream'i temizle
+    if (this.remoteStreams.has(userId)) {
+      const stream = this.remoteStreams.get(userId);
+      // Stream'deki tüm track'leri durdur
+      stream.getTracks().forEach((track) => {
+        track.stop();
+      });
+      this.remoteStreams.delete(userId);
+      console.log(`Cleared remote stream for ${userId}`);
     }
   }
 
@@ -1030,6 +1235,48 @@ class WebRTCManager {
       pc.close();
       this.viewerAudioConnections.delete(userId);
     }
+
+    // Viewer audio için de pending ICE candidates temizle
+    if (this.pendingIceCandidates && this.pendingIceCandidates.has(userId)) {
+      this.pendingIceCandidates.delete(userId);
+      console.log(`Cleared pending ICE candidates for viewer audio ${userId}`);
+    }
+  }
+
+  // Belirli bir kullanıcı için tüm kaynakları temizle
+  cleanupUserResources(userId) {
+    // Pending ICE candidates temizle
+    if (this.pendingIceCandidates && this.pendingIceCandidates.has(userId)) {
+      this.pendingIceCandidates.delete(userId);
+      console.log(`Cleared pending ICE candidates for ${userId}`);
+    }
+
+    // Remote stream'i temizle
+    if (this.remoteStreams.has(userId)) {
+      const stream = this.remoteStreams.get(userId);
+      stream.getTracks().forEach((track) => track.stop());
+      this.remoteStreams.delete(userId);
+      console.log(`Cleared remote stream for ${userId}`);
+    }
+  }
+
+  // Tüm pending ICE candidates'ı temizle
+  cleanupAllCandidates() {
+    if (this.pendingIceCandidates) {
+      const size = this.pendingIceCandidates.size;
+      this.pendingIceCandidates.clear();
+      console.log(`Cleared all pending ICE candidates (${size} users)`);
+    }
+  }
+
+  // Tüm remote stream'leri temizle
+  cleanupAllRemoteStreams() {
+    for (const [userId, stream] of this.remoteStreams) {
+      stream.getTracks().forEach((track) => track.stop());
+    }
+    const size = this.remoteStreams.size;
+    this.remoteStreams.clear();
+    console.log(`Cleared all remote streams (${size} users)`);
   }
 
   // Başka biri paylaşıyor mu kontrol et (çoklu presenter desteği)
@@ -1180,6 +1427,13 @@ class WebRTCManager {
     for (const [userId] of this.viewerAudioConnections) {
       this.closeViewerAudioConnection(userId);
     }
+
+    // Tüm kalan kaynakları temizle
+    this.cleanupAllCandidates();
+    this.cleanupAllRemoteStreams();
+
+    // Reconnect'i iptal et (manuel disconnect)
+    this.cancelReconnect();
 
     if (this.ws) {
       this.ws.close();

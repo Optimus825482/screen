@@ -23,6 +23,15 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Rate Limiting
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_USE_REDIS: bool = False  # Set True when Redis is available
+    RATE_LIMIT_LOGIN_PER_MINUTE: int = 5
+    RATE_LIMIT_CREATE_ROOM_PER_MINUTE: int = 10
+    RATE_LIMIT_DEFAULT_PER_MINUTE: int = 100
+    RATE_LIMIT_WS_CHAT_PER_MINUTE: int = 60
+    RATE_LIMIT_WS_SIGNALLING_PER_MINUTE: int = 300
+
     # JWT
     # CRITICAL: JWT_SECRET must be set in production for security
     # In development mode (DEBUG=True), a default value is allowed
@@ -36,7 +45,9 @@ class Settings(BaseSettings):
     METERED_API_URL: str = "https://erkan.metered.live/api/v1/turn/credentials"
     STUN_SERVER: str = "stun:stun.relay.metered.ca:80"
     TURN_SERVER: str = "turn:standard.relay.metered.ca:443"
-    TURN_SERVER_TCP: str = "turns:standard.relay.metered.ca:443?transport=tcp"
+    TURN_SERVER_80: str = "turn:standard.relay.metered.ca:80"
+    TURN_SERVER_TCP: str = "turn:standard.relay.metered.ca:80?transport=tcp"
+    TURN_SERVER_TLS: str = "turns:standard.relay.metered.ca:443?transport=tcp"
     TURN_USERNAME: str = ""
     TURN_CREDENTIAL: str = ""
 

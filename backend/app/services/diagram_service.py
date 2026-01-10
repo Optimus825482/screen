@@ -2,6 +2,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.diagram import Diagram
+from app.utils.logging_config import diagram_logger
 
 
 class DiagramService:
@@ -13,6 +14,15 @@ class DiagramService:
         self.db.add(diagram)
         await self.db.commit()
         await self.db.refresh(diagram)
+
+        diagram_logger.info(
+            f"Diagram created",
+            extra={
+                "diagram_id": str(diagram.id),
+                "diagram_name": name,
+                "owner_id": str(owner_id)
+            }
+        )
         return diagram
     
     async def get_diagram_by_id(self, diagram_id: UUID) -> Diagram | None:
@@ -26,7 +36,12 @@ class DiagramService:
         )
         return list(result.scalars().all())
     
-    async def update_diagram(self, diagram_id: UUID, name: str = None, content: str = None) -> Diagram | None:
+    async def update_diagram(
+        self,
+        diagram_id: UUID,
+        name: str | None = None,
+        content: str | None = None
+    ) -> Diagram | None:
         diagram = await self.get_diagram_by_id(diagram_id)
         if not diagram:
             return None

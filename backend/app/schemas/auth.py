@@ -22,8 +22,9 @@ class UserResponse(BaseModel):
     email: str
     role: str
     is_active: bool
+    must_change_password: bool
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -33,7 +34,13 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     role: str
+    must_change_password: bool
 
 
 class TokenRefresh(BaseModel):
     refresh_token: str
+
+
+class ChangePassword(BaseModel):
+    old_password: str
+    new_password: str = Field(..., min_length=8)
