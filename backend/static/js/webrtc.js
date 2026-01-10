@@ -373,10 +373,17 @@ class WebRTCManager {
         break;
 
       case "offer":
-        // Birisi bize offer gönderiyor (biz izliyoruz)
-        if (!this.isScreenSharing) {
-          await this.handleOffer(data.from, data.sdp);
-        }
+        // Birisi bize offer gönderiyor
+        // NOT: Biz de paylaşıyor olsak bile, diğer presenter'ın offer'ını kabul etmeliyiz (çoklu presenter)
+        console.log(
+          "Received offer from:",
+          data.from,
+          "isScreenSharing:",
+          this.isScreenSharing,
+          "isCameraSharing:",
+          this.isCameraSharing
+        );
+        await this.handleOffer(data.from, data.sdp);
         break;
 
       case "answer":
