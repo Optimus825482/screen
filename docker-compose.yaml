@@ -14,8 +14,8 @@ services:
       - RATE_LIMIT_USE_REDIS=true
       # JWT - Coolify'da environment variable olarak ayarla
       - JWT_SECRET=${JWT_SECRET}
-      # CORS
-      - CORS_ORIGINS=${CORS_ORIGINS:-["https://screen.erkanerdem.net"]}
+      # CORS - comma-separated or JSON array
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://screen.erkanerdem.net,http://localhost:8005}
       # Public URL
       - PUBLIC_URL=${PUBLIC_URL:-https://screen.erkanerdem.net}
       # Metered TURN Server

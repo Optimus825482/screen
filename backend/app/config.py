@@ -1,4 +1,5 @@
 import secrets
+import json
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 from pydantic import field_validator
@@ -51,8 +52,26 @@ class Settings(BaseSettings):
     TURN_USERNAME: str = ""
     TURN_CREDENTIAL: str = ""
 
-    # CORS
+    # CORS - accepts JSON string or comma-separated values
     CORS_ORIGINS: list[str] = ["http://localhost:8000", "http://127.0.0.1:8000"]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Parse CORS_ORIGINS from string (JSON or comma-separated) or list."""
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            v = v.strip()
+            # Try JSON parse first
+            if v.startswith("["):
+                try:
+                    return json.loads(v)
+                except json.JSONDecodeError:
+                    pass
+            # Fallback to comma-separated
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
 
     # Room Settings
     MAX_VIEWERS_PER_ROOM: int = 5  # Max 5 katılımcı (host dahil)
