@@ -882,19 +882,72 @@ class WebRTCManager {
     // Presenter için: localStream'deki audio track'i toggle et
     if (this.localStream) {
       const audioTracks = this.localStream.getAudioTracks();
-      audioTracks.forEach((track) => {
-        track.enabled = !track.enabled;
-      });
-      this.isMuted = audioTracks.length > 0 ? !audioTracks[0].enabled : true;
+      if (audioTracks.length > 0) {
+        const newEnabled = !audioTracks[0].enabled;
+        audioTracks.forEach((track) => {
+          track.enabled = newEnabled;
+        });
+        this.isMuted = !newEnabled;
+        console.log(
+          `Presenter audio ${newEnabled ? "enabled" : "disabled"}, isMuted: ${
+            this.isMuted
+          }`
+        );
+      } else {
+        // Audio track yok, muted olarak işaretle
+        this.isMuted = true;
+        console.log("No audio tracks in localStream, isMuted: true");
+      }
     }
     // Viewer için: audioStream'deki audio track'i toggle et
     else if (this.audioStream) {
       const audioTracks = this.audioStream.getAudioTracks();
-      audioTracks.forEach((track) => {
-        track.enabled = !track.enabled;
-      });
-      this.isMuted = audioTracks.length > 0 ? !audioTracks[0].enabled : true;
+      if (audioTracks.length > 0) {
+        const newEnabled = !audioTracks[0].enabled;
+        audioTracks.forEach((track) => {
+          track.enabled = newEnabled;
+        });
+        this.isMuted = !newEnabled;
+        console.log(
+          `Viewer audio ${newEnabled ? "enabled" : "disabled"}, isMuted: ${
+            this.isMuted
+          }`
+        );
+      } else {
+        this.isMuted = true;
+        console.log("No audio tracks in audioStream, isMuted: true");
+      }
+    } else {
+      // Hiç stream yok
+      this.isMuted = true;
+      console.log("No audio stream available, isMuted: true");
     }
+    return this.isMuted;
+  }
+
+  // Mikrofonu tamamen kapat (track'i durdur)
+  stopMicrophone() {
+    // Presenter için
+    if (this.localStream) {
+      const audioTracks = this.localStream.getAudioTracks();
+      audioTracks.forEach((track) => {
+        track.stop();
+        this.localStream.removeTrack(track);
+      });
+      console.log("Presenter microphone stopped and removed");
+    }
+    // Viewer için
+    if (this.audioStream) {
+      this.audioStream.getTracks().forEach((track) => track.stop());
+      this.audioStream = null;
+      console.log("Viewer audio stream stopped");
+    }
+    // Viewer audio peer connection'ı kapat
+    if (this.viewerAudioPc) {
+      this.viewerAudioPc.close();
+      this.viewerAudioPc = null;
+    }
+    this.isMuted = true;
     return this.isMuted;
   }
 

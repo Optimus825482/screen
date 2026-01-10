@@ -2035,15 +2035,20 @@
 
       async toggleMic() {
         if (this.isMuted) {
+          // Mikrofon açılacak
           try {
             await this.webrtc.addAudioTrack();
-            this.isMuted = false;
+            this.isMuted = this.webrtc.isMuted; // WebRTC'den al
+            console.log("Mic enabled, isMuted:", this.isMuted);
           } catch (e) {
             console.error("Mic error:", e);
+            this.isMuted = true; // Hata durumunda kapalı kalsın
             alert("Mikrofon erişimi sağlanamadı");
           }
         } else {
+          // Mikrofon kapatılacak
           this.isMuted = this.webrtc.toggleMute();
+          console.log("Mic toggled, isMuted:", this.isMuted);
         }
       },
 
