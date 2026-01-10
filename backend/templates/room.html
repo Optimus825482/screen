@@ -1024,10 +1024,40 @@
       </div>
     </main>
 
+    <!-- Desktop Sidebar Toggle Button (Collapsed State) -->
+    <button
+      x-show="sidebarCollapsed"
+      @click="sidebarCollapsed = false"
+      class="hidden lg:flex fixed right-0 top-1/2 -translate-y-1/2 z-20 bg-surface-dark border border-border-dark border-r-0 rounded-l-lg p-2 hover:bg-surface-hover transition-colors"
+      title="Paneli Aç"
+    >
+      <span class="material-symbols-outlined text-[20px] text-text-secondary"
+        >chevron_left</span
+      >
+    </button>
+
     <!-- Desktop Sidebar -->
     <aside
-      class="w-80 border-l border-border-dark bg-background-dark flex flex-col shrink-0 hidden lg:flex"
+      x-show="!sidebarCollapsed"
+      x-transition:enter="transition ease-out duration-200"
+      x-transition:enter-start="translate-x-full opacity-0"
+      x-transition:enter-end="translate-x-0 opacity-100"
+      x-transition:leave="transition ease-in duration-150"
+      x-transition:leave-start="translate-x-0 opacity-100"
+      x-transition:leave-end="translate-x-full opacity-0"
+      class="w-80 border-l border-border-dark bg-background-dark flex flex-col shrink-0 hidden lg:flex relative"
     >
+      <!-- Collapse Button -->
+      <button
+        @click="sidebarCollapsed = true"
+        class="absolute -left-3 top-1/2 -translate-y-1/2 z-10 bg-surface-dark border border-border-dark rounded-full p-1 hover:bg-surface-hover transition-colors shadow-lg"
+        title="Paneli Daralt"
+      >
+        <span class="material-symbols-outlined text-[16px] text-text-secondary"
+          >chevron_right</span
+        >
+      </button>
+
       <!-- Tabs -->
       <div class="flex border-b border-border-dark">
         <button
@@ -1401,6 +1431,7 @@
       activeTab: "participants",
       mobileTab: "participants",
       showMobileSidebar: false,
+      sidebarCollapsed: false,
       elapsedTime: 0,
       timerInterval: null,
       webrtc: null,
