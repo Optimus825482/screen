@@ -749,15 +749,28 @@
           </button>
 
           <!-- File Share Button -->
-          <button
-            @click="selectFileToShare()"
-            class="control-btn text-slate-400 p-2 md:p-3"
-            title="Dosya Paylaş"
-          >
-            <span class="material-symbols-outlined text-[20px] md:text-[24px]"
-              >attach_file</span
+          <div class="relative">
+            <button
+              @click="!fileUploading && selectFileToShare()"
+              class="control-btn p-2 md:p-3"
+              :class="fileUploading ? 'text-primary cursor-wait' : 'text-slate-400'"
+              :title="fileUploading ? 'Dosya yükleniyor...' : 'Dosya Paylaş'"
             >
-          </button>
+              <span class="material-symbols-outlined text-[20px] md:text-[24px]"
+                >attach_file</span
+              >
+            </button>
+            <!-- Upload Progress Indicator -->
+            <div
+              x-show="fileUploading"
+              class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-8 h-1 bg-surface-dark rounded-full overflow-hidden"
+            >
+              <div
+                class="h-full bg-primary transition-all duration-200"
+                :style="'width: ' + fileUploadProgress + '%'"
+              ></div>
+            </div>
+          </div>
 
           <div class="w-px h-6 md:h-8 bg-white/10 mx-0.5 md:mx-1"></div>
 
@@ -1311,6 +1324,8 @@
       sharedFiles: [],
       showFilePanel: false,
       isDraggingFile: false,
+      fileUploading: false,
+      fileUploadProgress: 0,
       // Whiteboard
       showWhiteboard: false,
       isDrawing: false,
@@ -1413,7 +1428,16 @@
             stream?.active
           );
           this.remoteStream = stream;
-          if (stream && this.$refs.remoteVideo) {
+
+          // Stream null ise temizle
+          if (!stream) {
+            if (this.$refs.remoteVideo) {
+              this.$refs.remoteVideo.srcObject = null;
+            }
+            return;
+          }
+
+          if (this.$refs.remoteVideo) {
             this.$refs.remoteVideo.srcObject = stream;
             // Mobil için: video'yu manuel başlat (autoplay politikası)
             this.$refs.remoteVideo.play().catch((e) => {
@@ -1485,18 +1509,43 @@
         // Çoklu presenter güncellemesi callback
         this.webrtc.onPresentersUpdate = (presenters) => {
           console.log("Presenters updated:", presenters);
+          const oldPresenterIds = Object.keys(this.presenters || {});
+          const newPresenterIds = Object.keys(presenters);
+
           this.presenters = presenters;
+
+          // Ayrılan presenter'ı tespit et
+          const leftPresenters = oldPresenterIds.filter(
+            (id) => !newPresenterIds.includes(id)
+          );
+
+          // Eğer izlediğimiz presenter ayrıldıysa, remote stream'i temizle
+          if (leftPresenters.includes(this.currentPresenterId)) {
+            console.log("Current presenter left, clearing remote stream");
+            this.remoteStream = null;
+            if (this.$refs.remoteVideo) {
+              this.$refs.remoteVideo.srcObject = null;
+            }
+          }
+
           // İlk presenter'ı currentPresenter olarak ayarla (geriye uyumluluk)
-          const presenterIds = Object.keys(presenters);
-          if (presenterIds.length > 0) {
-            const firstId = presenterIds[0];
-            this.currentPresenterId = firstId;
-            this.currentPresenterName = presenters[firstId].username;
-            this.currentShareType = presenters[firstId].share_type;
+          if (newPresenterIds.length > 0) {
+            // Eğer mevcut presenter hala listede değilse, ilkini seç
+            if (!newPresenterIds.includes(this.currentPresenterId)) {
+              const firstId = newPresenterIds[0];
+              this.currentPresenterId = firstId;
+              this.currentPresenterName = presenters[firstId].username;
+              this.currentShareType = presenters[firstId].share_type;
+            }
           } else {
+            // Hiç presenter kalmadı
             this.currentPresenterId = null;
             this.currentPresenterName = null;
             this.currentShareType = null;
+            this.remoteStream = null;
+            if (this.$refs.remoteVideo) {
+              this.$refs.remoteVideo.srcObject = null;
+            }
           }
         };
 
@@ -2315,19 +2364,24 @@
           return;
         }
 
+        // Upload progress için state
+        this.fileUploadProgress = 0;
+        this.fileUploading = true;
+
         try {
-          await this.webrtc.shareFile(file);
-          // Kendi listeme de ekle
-          this.sharedFiles.push({
-            filename: file.name,
-            filesize: file.size,
-            filetype: file.type,
-            username: "Sen",
-            timestamp: new Date().toISOString(),
+          // Multipart upload (FormData kullanarak)
+          await this.webrtc.shareFile(file, (progress) => {
+            this.fileUploadProgress = progress;
           });
+
+          // Backend tarafından doğrulandı ve file_id alındı
+          // Kendi listeme ekle gerek yok, WebSocket üzerinden gelecek
         } catch (e) {
           console.error("File share error:", e);
           alert(e.message || "Dosya paylaşılamadı");
+        } finally {
+          this.fileUploading = false;
+          this.fileUploadProgress = 0;
         }
       },
 
@@ -2347,16 +2401,14 @@
         return (bytes / (1024 * 1024)).toFixed(1) + " MB";
       },
 
-      downloadFile(file) {
-        if (!file.data) return;
-        const link = document.createElement("a");
-        link.href =
-          "data:" +
-          (file.filetype || "application/octet-stream") +
-          ";base64," +
-          file.data;
-        link.download = file.filename;
-        link.click();
+      async downloadFile(file) {
+        try {
+          // WebRTC manager üzerinden indir (file_id ile)
+          await this.webrtc.downloadFile(file.id || file.file_id, file.name || file.filename);
+        } catch (e) {
+          console.error("Download error:", e);
+          alert("Dosya indirilemedi: " + (e.message || "Bilinmeyen hata"));
+        }
       },
     };
   }

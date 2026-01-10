@@ -41,59 +41,29 @@ class WebRTCManager {
     // Dosya paylaşımı
     this.sharedFiles = [];
 
-    // Metered TURN Server config (API'den güncellenecek)
+    // WebRTC ICE config - Backend API'den yüklenecek (GÜVENLİ)
+    // Credentials artık backend'den geliyor, frontend'de hard-coded YOK
     this.config = {
       iceServers: [
-        { urls: "stun:stun.relay.metered.ca:80" },
-        {
-          urls: "turn:standard.relay.metered.ca:80",
-          username: "a00785389f1b29a83ff4325a",
-          credential: "s5K3Fmbw9JY4snea",
-        },
-        {
-          urls: "turn:standard.relay.metered.ca:80?transport=tcp",
-          username: "a00785389f1b29a83ff4325a",
-          credential: "s5K3Fmbw9JY4snea",
-        },
-        {
-          urls: "turn:standard.relay.metered.ca:443",
-          username: "a00785389f1b29a83ff4325a",
-          credential: "s5K3Fmbw9JY4snea",
-        },
-        {
-          urls: "turns:standard.relay.metered.ca:443?transport=tcp",
-          username: "a00785389f1b29a83ff4325a",
-          credential: "s5K3Fmbw9JY4snea",
-        },
+        { urls: "stun:stun.l.google.com:19302" },
       ],
     };
   }
 
-  // API'den güncel ICE config al (Metered REST API)
+  // API'den güncel ICE config al (Backend proxy üzerinden - GÜVENLİ)
+  // Credentials server-side environment variable'dan okunur
   async fetchIceConfig() {
     try {
-      // Önce Metered REST API'den dene (en güncel credentials)
-      const meteredResponse = await fetch(
-        "https://erkan.metered.live/api/v1/turn/credentials?apiKey=a2278584590ae2fd0bf60959fe0fecb7e3a7"
-      );
-      if (meteredResponse.ok) {
-        const iceServers = await meteredResponse.json();
-        this.config = { iceServers };
-        console.log("ICE config loaded from Metered API");
-        return;
-      }
-    } catch (error) {
-      console.warn("Metered API fetch failed, trying backend:", error);
-    }
-
-    // Fallback: Backend API'den al
-    try {
+      // Backend API'den al (API key server-side olarak yönetilir)
       const response = await fetch("/api/rooms/ice-config", {
         headers: Auth.getAuthHeaders(),
       });
       if (response.ok) {
-        this.config = await response.json();
+        const data = await response.json();
+        this.config = data;
         console.log("ICE config loaded from backend");
+      } else {
+        console.warn("Backend ICE config returned status:", response.status);
       }
     } catch (error) {
       console.warn("Backend ICE config fetch failed, using defaults:", error);
@@ -305,12 +275,23 @@ class WebRTCManager {
         // Remote stream'i kaldır
         this.remoteStreams.delete(data.presenter_id);
 
+        // Eğer bu presenter'ı izliyorsak, currentPresenter'ı temizle
+        if (this.currentPresenterId === data.presenter_id) {
+          this.currentPresenterId = null;
+          this.currentPresenterName = null;
+        }
+
         // Callbacks
         if (this.onPresentersUpdate) {
           this.onPresentersUpdate(this.presenters);
         }
         if (this.onPresenterChange) {
           this.onPresenterChange(data.presenter_id, null, null);
+        }
+
+        // Remote stream callback'i de çağır (UI'ın temizlenmesi için)
+        if (this.onRemoteStream && Object.keys(this.presenters).length === 0) {
+          this.onRemoteStream(null);
         }
         break;
 
@@ -1092,30 +1073,78 @@ class WebRTCManager {
     });
   }
 
-  // Dosya paylaş
-  async shareFile(file) {
+  // Dosya paylaş (FormData ile multipart upload, progress callback destekli)
+  async shareFile(file, onProgress) {
     // Dosya boyutu kontrolü (max 10MB)
     const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
       throw new Error("Dosya boyutu 10MB'dan büyük olamaz");
     }
 
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64Data = reader.result.split(",")[1];
-        this.send({
-          type: "file_share",
-          filename: file.name,
-          filesize: file.size,
-          filetype: file.type,
-          data: base64Data,
-        });
-        resolve();
-      };
-      reader.onerror = () => reject(new Error("Dosya okunamadı"));
-      reader.readAsDataURL(file);
-    });
+    try {
+      // FormData ile multipart upload
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("room_id", this.roomId);
+
+      // Authorization header'ı al (Content-Type yok, browser otomatik ekler)
+      const token = Auth.getToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const response = await fetch("/api/files/upload", {
+        method: "POST",
+        headers: headers,
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || "Dosya yüklenemedi");
+      }
+
+      const result = await response.json();
+
+      // WebSocket üzerinden sadece file_id gönder
+      this.send({
+        type: "file_share",
+        file_id: result.file_id,
+        timestamp: new Date().toISOString(),
+      });
+
+      return result;
+    } catch (error) {
+      throw new Error(error.message || "Dosya yüklenirken hata oluştu");
+    }
+  }
+
+  // Dosyayı indir (file_id ile)
+  async downloadFile(fileId, filename) {
+    try {
+      // Authorization header'ı al
+      const token = Auth.getToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const response = await fetch(`/api/files/download/${fileId}`, {
+        headers: headers,
+      });
+
+      if (!response.ok) {
+        throw new Error("Dosya indirilemedi");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Download error:", error);
+      throw error;
+    }
   }
 
   // Paylaşılan dosyaları getir

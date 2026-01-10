@@ -8,13 +8,18 @@ from app.services.auth_service import AuthService
 from app.services.room_service import RoomService
 from app.services.diagram_service import DiagramService
 from app.routers.rooms import get_guest_session, remove_guest_session
+from app.utils.logging_config import websocket_logger, get_logger
+from app.error_handlers import WebSocketErrorHandler
+from app.utils.rate_limit import check_websocket_rate_limit, cleanup_websocket_rate_limit
+
+logger = get_logger(__name__)
 
 router = APIRouter(tags=["WebSocket"])
 
 
 class ConnectionManager:
     """WebRTC Signaling ve Chat için bağlantı yöneticisi"""
-    
+
     def __init__(self):
         # room_id -> {user_id -> WebSocket}
         self.rooms: Dict[str, Dict[str, WebSocket]] = {}
@@ -28,7 +33,7 @@ class ConnectionManager:
         self.presenters: Dict[str, Dict[str, dict]] = {}
         # room_id -> [shared_files]
         self.shared_files: Dict[str, list] = {}
-    
+
     async def connect(self, websocket: WebSocket, room_id: str, user_id: str, username: str, is_guest: bool = False, guest_token: str = None):
         await websocket.accept()
         if room_id not in self.rooms:
@@ -40,8 +45,20 @@ class ConnectionManager:
         self.guests[user_id] = is_guest
         if guest_token:
             self.guest_tokens[user_id] = guest_token
+
+        websocket_logger.info(
+            f"User connected to room",
+            extra={
+                "room_id": room_id,
+                "user_id": user_id,
+                "username": username,
+                "is_guest": is_guest,
+                "room_participants": len(self.rooms[room_id])
+            }
+        )
     
     def disconnect(self, room_id: str, user_id: str):
+        username = self.usernames.get(user_id, "unknown")
         if room_id in self.rooms and user_id in self.rooms[room_id]:
             del self.rooms[room_id][user_id]
             if not self.rooms[room_id]:
@@ -61,6 +78,18 @@ class ConnectionManager:
         if user_id in self.guest_tokens:
             remove_guest_session(self.guest_tokens[user_id])
             del self.guest_tokens[user_id]
+
+        # Rate limit cleanup
+        cleanup_websocket_rate_limit(user_id)
+
+        websocket_logger.info(
+            f"User disconnected from room",
+            extra={
+                "room_id": room_id,
+                "user_id": user_id,
+                "username": username
+            }
+        )
     
     def add_presenter(self, room_id: str, user_id: str, username: str, share_type: str) -> bool:
         """Presenter ekle, max 2 presenter kontrolü yapar"""
@@ -94,21 +123,61 @@ class ConnectionManager:
         await websocket.send_json(message)
     
     async def broadcast_to_room(self, room_id: str, message: dict, exclude_user: str = None):
+        """Odadaki tum kullanicilara mesaj gonder, basarisiz olanlari logla"""
         if room_id not in self.rooms:
             return
+
+        failed_users = []
         for user_id, ws in self.rooms[room_id].items():
             if user_id != exclude_user:
                 try:
                     await ws.send_json(message)
-                except:
-                    pass
+                except Exception as e:
+                    # Basarisiz gonderimleri logla
+                    failed_users.append(user_id)
+                    WebSocketErrorHandler.log_websocket_error(
+                        error=e,
+                        room_id=room_id,
+                        user_id=user_id,
+                        message_type=message.get("type", "broadcast")
+                    )
+
+        # Basarisiz kullanici baglilarini temizle (opt-in cleanup)
+        if failed_users:
+            websocket_logger.warning(
+                f"Failed to send message to some users in room",
+                extra={
+                    "room_id": room_id,
+                    "failed_users": failed_users,
+                    "failed_count": len(failed_users)
+                }
+            )
     
     async def send_to_user(self, room_id: str, target_user_id: str, message: dict):
-        if room_id in self.rooms and target_user_id in self.rooms[room_id]:
-            try:
-                await self.rooms[room_id][target_user_id].send_json(message)
-            except:
-                pass
+        """Belirli bir kullaniciya mesaj gonder, hata durumunda logla"""
+        if room_id not in self.rooms:
+            websocket_logger.warning(
+                f"Room not found for send_to_user",
+                extra={"room_id": room_id, "target_user_id": target_user_id}
+            )
+            return
+
+        if target_user_id not in self.rooms[room_id]:
+            websocket_logger.warning(
+                f"User not in room for send_to_user",
+                extra={"room_id": room_id, "target_user_id": target_user_id}
+            )
+            return
+
+        try:
+            await self.rooms[room_id][target_user_id].send_json(message)
+        except Exception as e:
+            WebSocketErrorHandler.log_websocket_error(
+                error=e,
+                room_id=room_id,
+                user_id=target_user_id,
+                message_type=message.get("type", "send_to_user")
+            )
     
     def get_room_users(self, room_id: str) -> list[dict]:
         if room_id not in self.rooms:
@@ -201,14 +270,53 @@ async def websocket_room(
             "presenters": manager.get_presenters(room_id),
             "shared_files": manager.get_shared_files(room_id)
         }, websocket)
-        
+
         try:
             while True:
                 data = await websocket.receive_json()
                 msg_type = data.get("type")
-                
+
+                # Rate limiting based on message type
+                rate_limit_type = "default"
+                if msg_type == "chat":
+                    rate_limit_type = "chat"
+                elif msg_type in ("offer", "answer", "ice_candidate", "request_offer"):
+                    rate_limit_type = "signaling"
+
+                # Check rate limit
+                is_allowed, error_msg = await check_websocket_rate_limit(
+                    websocket, user_id, rate_limit_type
+                )
+
+                if not is_allowed:
+                    await manager.send_personal({
+                        "type": "rate_limit_exceeded",
+                        "message": error_msg or "Rate limit exceeded"
+                    }, websocket)
+                    continue
+
+                # Log all WebSocket messages (signaling, chat, etc.)
+                websocket_logger.debug(
+                    f"WebSocket message received",
+                    extra={
+                        "room_id": room_id,
+                        "user_id": user_id,
+                        "username": username,
+                        "msg_type": msg_type
+                    }
+                )
+
                 if msg_type == "chat":
                     # Chat mesajı
+                    websocket_logger.info(
+                        f"Chat message",
+                        extra={
+                            "room_id": room_id,
+                            "user_id": user_id,
+                            "username": username,
+                            "message_length": len(data.get("message", ""))
+                        }
+                    )
                     await manager.broadcast_to_room(room_id, {
                         "type": "chat",
                         "user_id": user_id,
@@ -216,7 +324,7 @@ async def websocket_room(
                         "message": data.get("message", ""),
                         "timestamp": data.get("timestamp")
                     })
-                
+
                 elif msg_type == "offer":
                     # WebRTC SDP Offer (host -> viewer)
                     target = data.get("target")
@@ -320,22 +428,32 @@ async def websocket_room(
                     }, exclude_user=user_id)
                 
                 elif msg_type == "file_share":
-                    # Dosya paylaşımı
-                    file_info = {
-                        "id": data.get("file_id"),
-                        "name": data.get("file_name"),
-                        "size": data.get("file_size"),
-                        "type": data.get("file_type"),
-                        "data": data.get("file_data"),  # Base64 encoded
-                        "sender_id": user_id,
-                        "sender_name": username,
-                        "timestamp": data.get("timestamp")
-                    }
-                    manager.add_shared_file(room_id, file_info)
-                    await manager.broadcast_to_room(room_id, {
-                        "type": "file_shared",
-                        **file_info
-                    })
+                    # Dosya paylaşımı - sadece file_id ile (Base64 yerine)
+                    from app.routers.files import get_temp_file_info
+                    file_id = data.get("file_id")
+                    file_info = get_temp_file_info(file_id)
+
+                    if file_info:
+                        shared_file = {
+                            "id": file_id,
+                            "name": file_info["filename"],
+                            "size": file_info["filesize"],
+                            "type": file_info["content_type"],
+                            "sender_id": user_id,
+                            "sender_name": username,
+                            "timestamp": data.get("timestamp")
+                        }
+                        manager.add_shared_file(room_id, shared_file)
+                        await manager.broadcast_to_room(room_id, {
+                            "type": "file_shared",
+                            **shared_file
+                        })
+                    else:
+                        # Dosya bulunamadı veya süresi dolmuş
+                        await manager.send_personal({
+                            "type": "error",
+                            "message": "Dosya bulunamadı veya süresi dolmuş"
+                        }, websocket)
                 
                 elif msg_type == "viewer_audio_offer":
                     # Viewer (guest) mikrofon açtı, host'a offer gönder
@@ -430,9 +548,25 @@ async def websocket_room(
                     await manager.send_personal({"type": "pong"}, websocket)
         
         except WebSocketDisconnect:
-            pass
+            websocket_logger.info(
+                f"WebSocket disconnected",
+                extra={
+                    "room_id": room_id,
+                    "user_id": user_id,
+                    "username": username
+                }
+            )
         except Exception as e:
-            print(f"WebSocket error: {e}")
+            websocket_logger.error(
+                f"WebSocket error",
+                extra={
+                    "room_id": room_id,
+                    "user_id": user_id,
+                    "username": username,
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                }
+            )
         finally:
             manager.disconnect(room_id, user_id)
             # Diğer kullanıcılara bildir
@@ -482,16 +616,36 @@ class DiagramConnectionManager:
             del self.cursors[diagram_id][user_id]
         if user_id in self.usernames:
             del self.usernames[user_id]
-    
+        # Rate limit cleanup
+        cleanup_websocket_rate_limit(user_id)
+
     async def broadcast_to_diagram(self, diagram_id: str, message: dict, exclude_user: str = None):
+        """Diagramdaki tum kullanicilara mesaj gonder, basarisiz olanlari logla"""
         if diagram_id not in self.diagrams:
             return
+
+        failed_users = []
         for user_id, ws in list(self.diagrams[diagram_id].items()):
             if user_id != exclude_user:
                 try:
                     await ws.send_json(message)
-                except:
-                    pass
+                except Exception as e:
+                    # Basarisiz gonderimleri logla
+                    failed_users.append(user_id)
+                    WebSocketErrorHandler.log_websocket_error(
+                        error=e,
+                        message_type=message.get("type", "broadcast_diagram")
+                    )
+
+        if failed_users:
+            websocket_logger.warning(
+                f"Failed to send message to some users in diagram",
+                extra={
+                    "diagram_id": diagram_id,
+                    "failed_users": failed_users,
+                    "failed_count": len(failed_users)
+                }
+            )
     
     async def send_personal(self, message: dict, websocket: WebSocket):
         await websocket.send_json(message)
@@ -586,7 +740,26 @@ async def websocket_diagram(
             while True:
                 data = await websocket.receive_json()
                 msg_type = data.get("type")
-                
+
+                # Rate limiting based on message type
+                rate_limit_type = "default"
+                if msg_type == "content_update":
+                    rate_limit_type = "content_update"
+                elif msg_type == "cursor_update":
+                    rate_limit_type = "cursor_update"
+
+                # Check rate limit
+                is_allowed, error_msg = await check_websocket_rate_limit(
+                    websocket, user_id, rate_limit_type
+                )
+
+                if not is_allowed:
+                    await diagram_manager.send_personal({
+                        "type": "rate_limit_exceeded",
+                        "message": error_msg or "Rate limit exceeded"
+                    }, websocket)
+                    continue
+
                 if msg_type == "content_update":
                     # İçerik güncellendi
                     content = data.get("content", "")
@@ -633,9 +806,25 @@ async def websocket_diagram(
                     await diagram_manager.send_personal({"type": "pong"}, websocket)
         
         except WebSocketDisconnect:
-            pass
+            websocket_logger.info(
+                f"Diagram WebSocket disconnected",
+                extra={
+                    "diagram_id": diagram_id,
+                    "user_id": user_id,
+                    "username": username
+                }
+            )
         except Exception as e:
-            print(f"Diagram WebSocket error: {e}")
+            websocket_logger.error(
+                f"Diagram WebSocket error",
+                extra={
+                    "diagram_id": diagram_id,
+                    "user_id": user_id,
+                    "username": username,
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                }
+            )
         finally:
             diagram_manager.disconnect(diagram_id, user_id)
             # Diğer kullanıcılara bildir

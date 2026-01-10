@@ -6,15 +6,30 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from app.config import settings
 from app.database import init_db
-from app.routers import auth_router, rooms_router, websocket_router, diagrams_router, mindmap_router
+from app.routers import auth_router, rooms_router, websocket_router, diagrams_router, mindmap_router, files_router
+from app.utils.logging_config import setup_logging, fastapi_logger
+from app.error_handlers import register_exception_handlers
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    # Setup logging first
+    setup_logging()
+    fastapi_logger.info(f"Starting {settings.APP_NAME}")
     await init_db()
+    fastapi_logger.info("Database initialized")
+    # Start file cleanup task
+    from app.routers.files import start_cleanup_task
+    start_cleanup_task()
+    fastapi_logger.info("File cleanup task started")
     yield
     # Shutdown
+    fastapi_logger.info("Shutting down application")
+    # Close rate limiter connections
+    from app.utils.rate_limit import close_rate_limiter
+    await close_rate_limiter()
+    fastapi_logger.info("Rate limiter connections closed")
 
 
 app = FastAPI(
@@ -33,6 +48,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Global Exception Handlers
+register_exception_handlers(app)
+
 # Static files & Templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -43,6 +61,7 @@ app.include_router(rooms_router)
 app.include_router(websocket_router)
 app.include_router(diagrams_router)
 app.include_router(mindmap_router)
+app.include_router(files_router)
 
 
 # Health Check
