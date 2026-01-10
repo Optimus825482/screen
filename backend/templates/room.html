@@ -1549,8 +1549,15 @@
         this.webrtc = new WebRTCManager(this.roomId, this.isHost);
 
         this.webrtc.onParticipantUpdate = (participants, data) => {
+          console.log(
+            "Participants updated:",
+            participants.length,
+            "data:",
+            data?.type
+          );
           const oldCount = this.participants.length;
-          this.participants = participants;
+          // Alpine.js reaktivitesi için yeni array oluştur
+          this.participants = [...participants];
           if (data.room_name) this.roomName = data.room_name;
           if (data.host_id) this.hostId = data.host_id;
           if (data.is_host !== undefined) this.isHost = data.is_host;
@@ -1573,7 +1580,9 @@
             "Remote stream received:",
             stream,
             "active:",
-            stream?.active
+            stream?.active,
+            "isSharing:",
+            this.isScreenSharing || this.isCameraSharing
           );
 
           // Stream null ise temizle
@@ -1585,20 +1594,10 @@
             return;
           }
 
-          // Eğer şu an paylaşımdaysak ve mevcut bir remote stream varsa, koru
-          // (yeni stream bizim paylaştığımız içindir, remote stream'i overwrite etme)
-          if (
-            (this.isScreenSharing || this.isCameraSharing) &&
-            this.remoteStream &&
-            this.remoteStream !== stream
-          ) {
-            console.log(
-              "Ignoring remote stream update while sharing, preserving existing remote stream"
-            );
-            return;
-          }
-
+          // Yeni stream'i her zaman kabul et (çoklu presenter desteği için)
+          // Eski mantık yanlıştı - biz paylaşırken bile diğer presenter'ın stream'ini almalıyız
           this.remoteStream = stream;
+          console.log("Remote stream set to UI");
 
           if (this.$refs.remoteVideo) {
             this.$refs.remoteVideo.srcObject = stream;
@@ -1717,7 +1716,8 @@
           const oldPresenterIds = Object.keys(this.presenters || {});
           const newPresenterIds = Object.keys(presenters);
 
-          this.presenters = presenters;
+          // Alpine.js reaktivitesi için yeni object oluştur
+          this.presenters = { ...presenters };
 
           // Ayrılan presenter'ı tespit et
           const leftPresenters = oldPresenterIds.filter(
