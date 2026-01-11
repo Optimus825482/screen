@@ -780,6 +780,7 @@ class WebRTCManager {
         this.localStream.addTrack(audioTrack);
 
         // Mevcut peer connection'lara audio track ekle/güncelle
+        // ÖNEMLİ: Track eklendikten sonra renegotiation gerekiyor
         for (const [userId, pc] of this.peerConnections) {
           try {
             const sender = pc
@@ -787,8 +788,22 @@ class WebRTCManager {
               .find((s) => s.track?.kind === "audio");
             if (sender) {
               await sender.replaceTrack(audioTrack);
+              console.log(`Replaced audio track for ${userId}`);
             } else {
               pc.addTrack(audioTrack, this.localStream);
+              console.log(`Added new audio track for ${userId}`);
+
+              // Yeni track eklendiğinde renegotiation yap
+              if (pc.signalingState === "stable") {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                this.send({
+                  type: "offer",
+                  target: userId,
+                  sdp: pc.localDescription,
+                });
+                console.log(`Renegotiation offer sent to ${userId} for audio`);
+              }
             }
           } catch (e) {
             console.warn(`Failed to add audio to peer ${userId}:`, e);
@@ -1014,6 +1029,39 @@ class WebRTCManager {
       }
     };
 
+    // ICE connection state - erken uyarı için
+    pc.oniceconnectionstatechange = () => {
+      console.log(
+        `ICE connection state with ${userId}:`,
+        pc.iceConnectionState
+      );
+
+      // ICE bağlantısı başarısız olursa
+      if (pc.iceConnectionState === "failed") {
+        console.log(
+          `ICE connection failed for ${userId}, attempting restart...`
+        );
+        this.attemptIceRestart(userId, pc);
+      }
+
+      // ICE bağlantısı koptu ama henüz failed değil
+      if (pc.iceConnectionState === "disconnected") {
+        console.log(`ICE disconnected for ${userId}, monitoring...`);
+      }
+
+      // Bağlantı kuruldu
+      if (
+        pc.iceConnectionState === "connected" ||
+        pc.iceConnectionState === "completed"
+      ) {
+        console.log(`ICE connected for ${userId}`);
+        // ICE restart sayacını sıfırla
+        if (this.iceRestartAttempts) {
+          this.iceRestartAttempts.delete(userId);
+        }
+      }
+    };
+
     pc.ontrack = (event) => {
       console.log(
         `Received track from ${userId}:`,
@@ -1095,15 +1143,36 @@ class WebRTCManager {
       if (this.onConnectionStateChange) {
         this.onConnectionStateChange(pc.connectionState, userId);
       }
-      // Connection failed veya disconnected ise temizlik yap
+
+      // Connection failed ise ICE restart dene
+      if (pc.connectionState === "failed") {
+        console.log(
+          `Connection failed for ${userId}, attempting ICE restart...`
+        );
+        this.attemptIceRestart(userId, pc);
+      }
+
+      // Connection disconnected ise kısa süre bekle, sonra ICE restart
+      if (pc.connectionState === "disconnected") {
+        console.log(
+          `Connection disconnected for ${userId}, waiting before ICE restart...`
+        );
+        // 3 saniye bekle, hala disconnected ise restart
+        setTimeout(() => {
+          if (pc.connectionState === "disconnected") {
+            console.log(
+              `Still disconnected for ${userId}, attempting ICE restart...`
+            );
+            this.attemptIceRestart(userId, pc);
+          }
+        }, 3000);
+      }
+
+      // Pending ICE candidates temizliği
       if (
         pc.connectionState === "failed" ||
         pc.connectionState === "disconnected"
       ) {
-        console.log(
-          `Connection ${pc.connectionState} for ${userId}, cleaning up resources`
-        );
-        // Pending ICE candidates'ı temizle
         if (
           this.pendingIceCandidates &&
           this.pendingIceCandidates.has(userId)
@@ -1114,6 +1183,7 @@ class WebRTCManager {
           );
         }
       }
+
       // Connection closed ise tam temizlik
       if (pc.connectionState === "closed") {
         this.cleanupUserResources(userId);
@@ -1569,6 +1639,84 @@ class WebRTCManager {
 
   endRoom() {
     this.send({ type: "end_room" });
+  }
+
+  // ICE Restart - Bağlantı koptuğunda yeniden bağlanmayı dene
+  async attemptIceRestart(userId, pc) {
+    // Maksimum 3 deneme
+    if (!this.iceRestartAttempts) {
+      this.iceRestartAttempts = new Map();
+    }
+
+    const attempts = this.iceRestartAttempts.get(userId) || 0;
+    if (attempts >= 3) {
+      console.log(`Max ICE restart attempts reached for ${userId}, giving up`);
+      this.iceRestartAttempts.delete(userId);
+      return;
+    }
+
+    this.iceRestartAttempts.set(userId, attempts + 1);
+    console.log(`ICE restart attempt ${attempts + 1}/3 for ${userId}`);
+
+    try {
+      // Eğer biz paylaşıyorsak, yeni offer oluştur (iceRestart: true)
+      if (this.localStream && (this.isScreenSharing || this.isCameraSharing)) {
+        const offer = await pc.createOffer({ iceRestart: true });
+        await pc.setLocalDescription(offer);
+
+        this.send({
+          type: "offer",
+          target: userId,
+          sdp: pc.localDescription,
+        });
+        console.log(`ICE restart offer sent to ${userId}`);
+      } else {
+        // Biz izleyiciyiz, presenter'dan yeni offer iste
+        this.send({ type: "request_offer", target: userId });
+        console.log(`Requested new offer from ${userId} for ICE restart`);
+      }
+
+      // Başarılı olursa sayacı sıfırla (5 saniye sonra)
+      setTimeout(() => {
+        if (pc.connectionState === "connected") {
+          this.iceRestartAttempts.delete(userId);
+          console.log(`ICE restart successful for ${userId}`);
+        }
+      }, 5000);
+    } catch (e) {
+      console.error(`ICE restart failed for ${userId}:`, e);
+    }
+  }
+
+  // Tüm bağlantıları yeniden kur (tam reconnect)
+  async reconnectAllPeers() {
+    console.log("Reconnecting all peer connections...");
+
+    // Önce ICE config'i yenile
+    await this.fetchIceConfig();
+
+    // Tüm presenter'lardan yeni offer iste
+    for (const presenterId of Object.keys(this.presenters)) {
+      if (presenterId !== this.myUserId) {
+        // Eski bağlantıyı kapat
+        this.closePeerConnection(presenterId);
+        // Yeni bağlantı oluştur
+        this.createPeerConnection(presenterId);
+        // Offer iste
+        this.send({ type: "request_offer", target: presenterId });
+        console.log(`Reconnect: requested offer from ${presenterId}`);
+      }
+    }
+
+    // Eğer biz paylaşıyorsak, tüm peer'lara yeni offer gönder
+    if (this.isScreenSharing || this.isCameraSharing) {
+      for (const [userId] of this.peerConnections) {
+        if (userId !== this.myUserId) {
+          await this.createOfferForUser(userId);
+          console.log(`Reconnect: sent offer to ${userId}`);
+        }
+      }
+    }
   }
 
   disconnect() {
