@@ -432,13 +432,25 @@ class WebRTCManager {
         }
 
         // Yeni presenter'dan offer iste (kendimiz değilsek)
-        // NOT: Biz de paylaşıyor olsak bile, diğer presenter'ın stream'ini almak için offer istememiz gerekiyor
         if (data.presenter_id !== this.myUserId) {
           console.log(
             "Requesting offer from new presenter:",
             data.presenter_id
           );
           this.send({ type: "request_offer", target: data.presenter_id });
+
+          // ÖNEMLİ: Eğer biz de paylaşıyorsak, yeni presenter'a kendi stream'imizi de gönder
+          // Bu sayede çift yönlü görüntü alışverişi sağlanır
+          if (this.isScreenSharing || this.isCameraSharing) {
+            console.log(
+              "We are also sharing, sending offer to new presenter:",
+              data.presenter_id
+            );
+            // Küçük gecikme ile gönder (race condition önlemek için)
+            setTimeout(() => {
+              this.createOfferForUser(data.presenter_id);
+            }, 200);
+          }
         }
         break;
 
@@ -1019,7 +1031,24 @@ class WebRTCManager {
       }
 
       // Stream'i sakla (çoklu presenter için)
-      this.remoteStreams.set(userId, stream);
+      // ÖNEMLİ: Mevcut stream varsa track'leri birleştir, yoksa yeni stream oluştur
+      const existingStream = this.remoteStreams.get(userId);
+      if (existingStream) {
+        // Aynı türde track varsa değiştir, yoksa ekle
+        const existingTrack = existingStream
+          .getTracks()
+          .find((t) => t.kind === event.track.kind);
+        if (existingTrack) {
+          existingStream.removeTrack(existingTrack);
+        }
+        existingStream.addTrack(event.track);
+        console.log(
+          `Added/replaced ${event.track.kind} track to existing stream for ${userId}`
+        );
+      } else {
+        this.remoteStreams.set(userId, stream);
+        console.log(`Created new stream for ${userId}`);
+      }
 
       // Track event listeners ekle
       event.track.onended = () => {
@@ -1033,6 +1062,10 @@ class WebRTCManager {
           if (activeTracks.length === 0) {
             console.log(`All tracks ended for ${userId}, removing stream`);
             this.remoteStreams.delete(userId);
+            // Stream kaldırıldığında callback'leri çağır
+            if (this.onRemoteStreams) {
+              this.onRemoteStreams(new Map(this.remoteStreams));
+            }
           }
         }
       };
@@ -1043,14 +1076,17 @@ class WebRTCManager {
         console.log(`Track unmuted from ${userId}:`, event.track.kind);
       };
 
-      // Eski callback: tek stream (geriye uyumluluk)
-      if (this.onRemoteStream) {
-        this.onRemoteStream(stream);
+      // ÖNEMLİ: Çoklu presenter callback'ini ÖNCE çağır (yeni sistem)
+      // Bu sayede tüm stream'ler UI'da gösterilir
+      if (this.onRemoteStreams) {
+        // Map'in kopyasını gönder (reaktivite için)
+        this.onRemoteStreams(new Map(this.remoteStreams));
       }
 
-      // Yeni callback: tüm presenter stream'leri
-      if (this.onRemoteStreams) {
-        this.onRemoteStreams(this.remoteStreams);
+      // Eski callback: tek stream (geriye uyumluluk için - sadece ilk presenter)
+      // NOT: Bu callback artık sadece currentPresenter için kullanılacak
+      if (this.onRemoteStream && !this.onRemoteStreams) {
+        this.onRemoteStream(stream);
       }
     };
 
@@ -1160,6 +1196,27 @@ class WebRTCManager {
     }
 
     try {
+      // ÖNEMLİ: Eğer biz de paylaşıyorsak, önce kendi track'lerimizi ekle
+      // Bu sayede çift yönlü stream alışverişi sağlanır
+      if (this.localStream && (this.isScreenSharing || this.isCameraSharing)) {
+        const senders = pc.getSenders();
+        for (const track of this.localStream.getTracks()) {
+          const existingSender = senders.find(
+            (s) => s.track?.kind === track.kind
+          );
+          if (!existingSender) {
+            try {
+              pc.addTrack(track, this.localStream);
+              console.log(
+                `Added local ${track.kind} track before handling offer from ${fromUserId}`
+              );
+            } catch (e) {
+              console.warn(`Could not add local track:`, e);
+            }
+          }
+        }
+      }
+
       await pc.setRemoteDescription(new RTCSessionDescription(sdp));
       console.log(`Remote description set for ${fromUserId}`);
 

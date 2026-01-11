@@ -565,7 +565,7 @@
         <div
           x-show="getPresenterCount() > 0 || isScreenSharing || isCameraSharing"
           class="split-screen absolute inset-0 p-2"
-          :class="(isScreenSharing || isCameraSharing) && remoteStream ? 'dual' : 'single'"
+          :class="getActiveVideoCount() > 1 ? 'dual' : 'single'"
         >
           <!-- Local Video (kendi paylaşımım) -->
           <div
@@ -594,9 +594,37 @@
             </div>
           </div>
 
-          <!-- Remote Video (başkasının paylaşımı) - her zaman göster (stream varsa) -->
+          <!-- Remote Videos (diğer presenter'ların paylaşımları) - Çoklu Presenter Desteği -->
+          <template
+            x-for="[presenterId, presenterInfo] in Object.entries(presenters).filter(([id]) => id !== currentUserId && remoteStreams[id])"
+            :key="presenterId"
+          >
+            <div
+              class="presenter-video"
+              :class="expandedPresenter === presenterId ? 'expanded' : ''"
+              @click="expandedPresenter = expandedPresenter === presenterId ? null : presenterId"
+            >
+              <video
+                :id="'remote-video-' + presenterId"
+                x-init="$nextTick(() => attachRemoteStream(presenterId, $el))"
+                autoplay
+                playsinline
+                class="w-full h-full object-contain"
+              ></video>
+              <div class="presenter-label">
+                <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                <span x-text="presenterInfo.username"></span>
+                <span
+                  class="text-xs text-slate-400"
+                  x-text="presenterInfo.share_type === 'camera' ? '(Kamera)' : '(Ekran)'"
+                ></span>
+              </div>
+            </div>
+          </template>
+
+          <!-- Fallback: Eski tek remote video (geriye uyumluluk) -->
           <div
-            x-show="remoteStream"
+            x-show="remoteStream && Object.keys(remoteStreams).length === 0"
             class="presenter-video"
             :class="expandedPresenter === currentPresenterId ? 'expanded' : ''"
             @click="expandedPresenter = expandedPresenter === currentPresenterId ? null : currentPresenterId"
@@ -792,7 +820,7 @@
 
         <!-- Viewer Waiting - Bağlantı kuruluyor -->
         <div
-          x-show="!isScreenSharing && !isCameraSharing && getPresenterCount() > 0 && !remoteStream"
+          x-show="!isScreenSharing && !isCameraSharing && getPresenterCount() > 0 && !remoteStream && Object.keys(remoteStreams).length === 0"
           class="relative z-10 flex flex-col items-center gap-4 p-8 rounded-2xl bg-surface-dark/90 shadow-2xl backdrop-blur-md max-w-md text-center border border-border-dark"
         >
           <div
@@ -856,7 +884,7 @@
 
         <!-- Someone else sharing indicator -->
         <div
-          x-show="!isScreenSharing && !isCameraSharing && getPresenterCount() > 0 && remoteStream"
+          x-show="!isScreenSharing && !isCameraSharing && getPresenterCount() > 0 && (remoteStream || Object.keys(remoteStreams).length > 0)"
           class="absolute top-6 left-1/2 -translate-x-1/2 z-10"
         >
           <div
@@ -1517,6 +1545,30 @@
         return Object.keys(this.presenters).length;
       },
 
+      // Aktif video sayısı (split screen için)
+      getActiveVideoCount() {
+        let count = 0;
+        // Kendi paylaşımım
+        if (this.isScreenSharing || this.isCameraSharing) count++;
+        // Remote stream'ler (çoklu presenter)
+        count += Object.keys(this.remoteStreams).filter(
+          (id) => id !== this.currentUserId
+        ).length;
+        return count;
+      },
+
+      // Remote stream'i video element'e bağla
+      attachRemoteStream(presenterId, videoElement) {
+        const stream = this.remoteStreams[presenterId];
+        if (stream && videoElement) {
+          console.log("Attaching remote stream to video element:", presenterId);
+          videoElement.srcObject = stream;
+          videoElement.play().catch((e) => {
+            console.warn("Video autoplay failed:", e);
+          });
+        }
+      },
+
       getInviteLink() {
         return this.publicUrl + "/join/" + this.inviteCode;
       },
@@ -1577,15 +1629,13 @@
 
         this.webrtc.onRemoteStream = (stream) => {
           console.log(
-            "Remote stream received:",
+            "Remote stream received (legacy):",
             stream,
             "active:",
-            stream?.active,
-            "isSharing:",
-            this.isScreenSharing || this.isCameraSharing
+            stream?.active
           );
 
-          // Stream null ise temizle
+          // Stream null ise temizle (geriye uyumluluk)
           if (!stream) {
             this.remoteStream = null;
             if (this.$refs.remoteVideo) {
@@ -1594,37 +1644,75 @@
             return;
           }
 
-          // Yeni stream'i her zaman kabul et (çoklu presenter desteği için)
-          // Eski mantık yanlıştı - biz paylaşırken bile diğer presenter'ın stream'ini almalıyız
+          // Geriye uyumluluk için - sadece onRemoteStreams yoksa kullan
           this.remoteStream = stream;
-          console.log("Remote stream set to UI");
-
-          if (this.$refs.remoteVideo) {
+          if (
+            this.$refs.remoteVideo &&
+            Object.keys(this.remoteStreams).length === 0
+          ) {
             this.$refs.remoteVideo.srcObject = stream;
-            // Mobil için: video'yu manuel başlat (autoplay politikası)
             this.$refs.remoteVideo.play().catch((e) => {
-              console.warn(
-                "Video autoplay failed, user interaction needed:",
-                e
-              );
-            });
-            // Remote stream geldiğinde annotation canvas'ı başlat
-            this.$nextTick(() => {
-              this.initAnnotationCanvas();
-            });
-            // Stream track'lerini dinle
-            stream.getTracks().forEach((track) => {
-              track.onended = () => {
-                console.log("Remote track ended:", track.kind);
-              };
-              track.onmute = () => {
-                console.log("Remote track muted:", track.kind);
-              };
-              track.onunmute = () => {
-                console.log("Remote track unmuted:", track.kind);
-              };
+              console.warn("Video autoplay failed:", e);
             });
           }
+        };
+
+        // ÖNEMLİ: Çoklu presenter için yeni callback
+        this.webrtc.onRemoteStreams = (streamsMap) => {
+          console.log("Remote streams updated:", streamsMap.size, "streams");
+
+          // Map'i plain object'e çevir (Alpine.js reaktivitesi için)
+          const newStreams = {};
+          streamsMap.forEach((stream, presenterId) => {
+            // Kendi stream'imizi dahil etme
+            if (presenterId !== this.currentUserId) {
+              newStreams[presenterId] = stream;
+              console.log(
+                `Stream for ${presenterId}:`,
+                stream.active,
+                stream.getTracks().map((t) => t.kind)
+              );
+            }
+          });
+
+          // Alpine.js reaktivitesi için yeni object ata
+          this.remoteStreams = { ...newStreams };
+
+          // En az bir remote stream varsa remoteStream'i de güncelle (geriye uyumluluk)
+          const remotePresenterIds = Object.keys(newStreams);
+          if (remotePresenterIds.length > 0) {
+            // İlk remote stream'i remoteStream olarak ayarla
+            const firstRemoteId = remotePresenterIds[0];
+            this.remoteStream = newStreams[firstRemoteId];
+
+            // currentPresenter bilgilerini güncelle
+            if (this.presenters[firstRemoteId]) {
+              this.currentPresenterId = firstRemoteId;
+              this.currentPresenterName =
+                this.presenters[firstRemoteId].username;
+              this.currentShareType = this.presenters[firstRemoteId].share_type;
+            }
+          } else {
+            this.remoteStream = null;
+          }
+
+          // Video element'lere stream'leri bağla
+          this.$nextTick(() => {
+            for (const [presenterId, stream] of Object.entries(newStreams)) {
+              const videoEl = document.getElementById(
+                "remote-video-" + presenterId
+              );
+              if (videoEl && videoEl.srcObject !== stream) {
+                console.log("Binding stream to video element:", presenterId);
+                videoEl.srcObject = stream;
+                videoEl
+                  .play()
+                  .catch((e) => console.warn("Autoplay failed:", e));
+              }
+            }
+            // Annotation canvas'ı başlat
+            this.initAnnotationCanvas();
+          });
         };
 
         this.webrtc.onChatMessage = (msg) => {
@@ -1724,6 +1812,16 @@
             (id) => !newPresenterIds.includes(id)
           );
 
+          // Ayrılan presenter'ların stream'lerini temizle
+          for (const leftId of leftPresenters) {
+            if (this.remoteStreams[leftId]) {
+              console.log("Removing stream for left presenter:", leftId);
+              delete this.remoteStreams[leftId];
+            }
+          }
+          // Reaktivite için yeni object ata
+          this.remoteStreams = { ...this.remoteStreams };
+
           // Eğer izlediğimiz presenter ayrıldıysa, remote stream'i temizle
           if (leftPresenters.includes(this.currentPresenterId)) {
             console.log("Current presenter left, clearing remote stream");
@@ -1748,6 +1846,7 @@
             this.currentPresenterName = null;
             this.currentShareType = null;
             this.remoteStream = null;
+            this.remoteStreams = {};
             if (this.$refs.remoteVideo) {
               this.$refs.remoteVideo.srcObject = null;
             }
