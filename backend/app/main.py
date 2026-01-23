@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from app.config import settings
 from app.database import init_db
-from app.routers import auth_router, rooms_router, websocket_router, diagrams_router, mindmap_router, files_router
+from app.routers import auth_router, rooms_router, websocket_router, diagrams_router, files_router
 from app.utils.logging_config import setup_logging, fastapi_logger
 from app.error_handlers import register_exception_handlers
 from app.middleware import RateLimitHeaderMiddleware
@@ -77,7 +77,6 @@ app.include_router(auth_router)
 app.include_router(rooms_router)
 app.include_router(websocket_router)
 app.include_router(diagrams_router)
-app.include_router(mindmap_router)
 app.include_router(files_router)
 
 
@@ -150,20 +149,6 @@ async def watch_page(request: Request, room_id: str):
         "public_url": settings.PUBLIC_URL
     })
 
-
-@app.get("/mindmap", response_class=HTMLResponse)
-async def mindmap_page(request: Request):
-    """Mindmap editörü"""
-    return templates.TemplateResponse("mindmap.html", {"request": request})
-
-
-@app.get("/mindmap/{diagram_id}", response_class=HTMLResponse)
-async def mindmap_edit_page(request: Request, diagram_id: str):
-    """Mindmap editörü - belirli diagram"""
-    return templates.TemplateResponse("mindmap.html", {
-        "request": request,
-        "diagram_id": diagram_id
-    })
 
 
 if __name__ == "__main__":
