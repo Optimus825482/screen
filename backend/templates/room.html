@@ -2042,6 +2042,15 @@
             }
           });
 
+          // Mobil görünümde otomatik kapatma (Paylaşım başladığında)
+          if (
+            this.isMobile &&
+            streamsMap.size > Object.keys(this.remoteStreams).length &&
+            this.showMobileSidebar
+          ) {
+            this.showMobileSidebar = false;
+          }
+
           // Alpine.js reaktivitesi için yeni object ata
           this.remoteStreams = { ...newStreams };
 
@@ -2084,19 +2093,31 @@
 
         this.webrtc.onChatMessage = (msg) => {
           this.chatMessages.push(msg);
+
+          // Mobil görünümde otomatik toggle
+          if (
+            this.isMobile &&
+            msg.user_id !== this.currentUserId &&
+            !this.showMobileSidebar
+          ) {
+            this.showMobileSidebar = true;
+            this.activeTab = "chat";
+          }
+
           // Başkasından gelen mesajlarda ses çal
           if (msg.user_id !== this.currentUserId && this.soundEnabled) {
             this.playNotificationSound();
           }
           this.$nextTick(() => {
-            if (this.$refs.chatContainer) {
-              this.$refs.chatContainer.scrollTop =
-                this.$refs.chatContainer.scrollHeight;
-            }
-            if (this.$refs.mobileChatContainer) {
-              this.$refs.mobileChatContainer.scrollTop =
-                this.$refs.mobileChatContainer.scrollHeight;
-            }
+            const containers = [
+              this.$refs.chatContainer,
+              this.$refs.mobileChatContainer,
+            ];
+            containers.forEach((container) => {
+              if (container) {
+                container.scrollTop = container.scrollHeight;
+              }
+            });
           });
         };
 
