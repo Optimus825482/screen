@@ -177,6 +177,142 @@
       height: 32px;
     }
   }
+  /* Presentation Mode Styles */
+  .presentation-fullscreen-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+  }
+  .presentation-fullscreen-overlay video {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  .presentation-controls {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.7) 0%,
+      transparent 100%
+    );
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .presentation-fullscreen-overlay:hover .presentation-controls,
+  .presentation-fullscreen-overlay.show-controls .presentation-controls {
+    opacity: 1;
+  }
+  .presentation-exit-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: rgba(239, 68, 68, 0.9);
+    color: white;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background 0.2s;
+  }
+  .presentation-exit-btn:hover {
+    background: rgba(220, 38, 38, 1);
+  }
+  .pip-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    border-radius: 8px;
+    font-size: 13px;
+    backdrop-filter: blur(4px);
+    transition: background 0.2s;
+  }
+  .pip-btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+  }
+  /* Voice Chat Indicators */
+  .voice-chat-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    background: linear-gradient(
+      to top,
+      rgba(0, 0, 0, 0.7) 0%,
+      transparent 100%
+    );
+  }
+  .voice-user-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(34, 197, 94, 0.2);
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    border-radius: 20px;
+    font-size: 12px;
+    color: #86efac;
+  }
+  .voice-user-badge .speaking-dot {
+    width: 8px;
+    height: 8px;
+    background: #22c55e;
+    border-radius: 50%;
+    animation: pulse-speaking 1s infinite;
+  }
+  @keyframes pulse-speaking {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.5;
+      transform: scale(0.8);
+    }
+  }
+  /* Modal Styles */
+  .presentation-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .presentation-modal {
+    background: linear-gradient(
+      135deg,
+      rgba(30, 41, 59, 0.95) 0%,
+      rgba(15, 23, 42, 0.98) 100%
+    );
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 32px;
+    max-width: 420px;
+    text-align: center;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  }
 </style>
 {% endblock %} {% block content %}
 <div
@@ -260,6 +396,17 @@
           title="Ekran Üzerine Çiz"
         >
           <span class="material-symbols-outlined text-[18px]">draw</span>
+        </button>
+
+        <!-- Sunum Modu Toggle (Sadece ekran/kamera paylaşırken görünür) -->
+        <button
+          x-show="isScreenSharing || isCameraSharing"
+          @click="togglePresentationMode()"
+          class="control-btn p-2"
+          :class="isPresentationMode ? 'active bg-orange-500/20 text-orange-400' : 'text-slate-400'"
+          :title="isPresentationMode ? 'Sunum Modunu Kapat' : 'Sunum Modunu Başlat'"
+        >
+          <span class="material-symbols-outlined text-[18px]">slideshow</span>
         </button>
 
         <!-- File Share -->
@@ -1435,6 +1582,114 @@
       </div>
     </div>
   </aside>
+
+  <!-- Presentation Mode Fullscreen Overlay (İzleyiciler için) -->
+  <div
+    x-show="isInPresentationMode && !isPresentationPresenter"
+    x-transition:enter="transition ease-out duration-300"
+    x-transition:enter-start="opacity-0"
+    x-transition:enter-end="opacity-100"
+    x-transition:leave="transition ease-in duration-200"
+    x-transition:leave-start="opacity-100"
+    x-transition:leave-end="opacity-0"
+    class="presentation-fullscreen-overlay"
+    :class="showPresentationControls ? 'show-controls' : ''"
+    @mousemove="showPresentationControlsTemporary()"
+    @click="showPresentationControlsTemporary()"
+    @keydown.escape.window="exitPresentationMode()"
+  >
+    <!-- Fullscreen Video -->
+    <video
+      x-ref="presentationVideo"
+      autoplay
+      playsinline
+      class="w-full h-full object-contain"
+    ></video>
+
+    <!-- Top Controls -->
+    <div class="presentation-controls">
+      <div class="flex items-center gap-3">
+        <span
+          class="text-white/80 text-sm font-medium"
+          x-text="'Sunum: ' + presentationPresenterName"
+        ></span>
+        <span
+          class="flex items-center gap-1 text-xs text-green-400 bg-green-500/20 px-2 py-0.5 rounded-full"
+        >
+          <span
+            class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"
+          ></span>
+          Canlı
+        </span>
+      </div>
+      <div class="flex items-center gap-2">
+        <!-- PiP Button -->
+        <button
+          @click="togglePictureInPicture()"
+          class="pip-btn"
+          title="Küçük Pencere Modu"
+        >
+          <span class="material-symbols-outlined text-[18px]"
+            >picture_in_picture_alt</span
+          >
+          <span class="hidden sm:inline">PiP</span>
+        </button>
+        <!-- Exit Button -->
+        <button @click="exitPresentationMode()" class="presentation-exit-btn">
+          <span class="material-symbols-outlined text-[18px]"
+            >fullscreen_exit</span
+          >
+          <span>Çıkış (ESC)</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Voice Chat Bar (Bottom) -->
+    <div class="voice-chat-bar" x-show="activeAudioUsers.length > 0">
+      <template x-for="audioUser in activeAudioUsers" :key="audioUser.user_id">
+        <div class="voice-user-badge">
+          <span class="speaking-dot"></span>
+          <span x-text="audioUser.username"></span>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Presentation Mode Starting Modal (Transition) -->
+  <div
+    x-show="showPresentationTransitionModal"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0"
+    x-transition:enter-end="opacity-100"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100"
+    x-transition:leave-end="opacity-0"
+    class="presentation-modal-overlay"
+  >
+    <div class="presentation-modal">
+      <div
+        class="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/20 flex items-center justify-center"
+      >
+        <span
+          class="material-symbols-outlined text-primary text-4xl animate-pulse"
+          >slideshow</span
+        >
+      </div>
+      <h3 class="text-xl font-bold text-white mb-2">Sunum Başlatılıyor</h3>
+      <p class="text-slate-400 text-sm mb-4">
+        <span x-text="presentationPresenterName"></span> sunum moduna geçti.<br />
+        Tam ekrana geçiliyor...
+      </p>
+      <div
+        class="flex items-center justify-center gap-2 text-xs text-slate-500"
+      >
+        <span class="material-symbols-outlined text-[14px] animate-spin"
+          >refresh</span
+        >
+        <span>Otomatik tam ekran...</span>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="/static/js/webrtc.js?v=4"></script>
@@ -1524,6 +1779,23 @@
       reconnectText: "",
       reconnectDelay: 0,
 
+      // ==================== PRESENTATION MODE STATE ====================
+      isPresentationMode: false, // Ben sunum modunu başlattım mı?
+      isInPresentationMode: false, // Sunum modundayım mı? (izleyici olarak)
+      isPresentationPresenter: false, // Sunum modunu başlatan ben miyim?
+      presentationPresenterName: "", // Sunum yapan kişinin adı
+      presentationPresenterId: null, // Sunum yapan kişinin ID'si
+      showPresentationTransitionModal: false, // Geçiş modalı
+      showPresentationControls: false, // Kontrolleri göster (hover)
+      presentationControlsTimeout: null,
+
+      // ==================== VOICE CHAT STATE ====================
+      activeAudioUsers: [], // Mikrofonu açık olan kullanıcılar
+      voiceChatEnabled: false, // Sesli iletişim aktif mi?
+
+      // ==================== PIP MODE ====================
+      isPiPMode: false, // Picture-in-Picture modu aktif mi?
+
       // Ekran paylaşabilir miyim? (çoklu presenter - max 2)
       canShare() {
         // Zaten paylaşıyorsak true
@@ -1552,7 +1824,7 @@
         if (this.isScreenSharing || this.isCameraSharing) count++;
         // Remote stream'ler (çoklu presenter)
         count += Object.keys(this.remoteStreams).filter(
-          (id) => id !== this.currentUserId
+          (id) => id !== this.currentUserId,
         ).length;
         return count;
       },
@@ -1605,7 +1877,7 @@
             "Participants updated:",
             participants.length,
             "data:",
-            data?.type
+            data?.type,
           );
           const oldCount = this.participants.length;
           // Alpine.js reaktivitesi için yeni array oluştur
@@ -1632,7 +1904,7 @@
             "Remote stream received (legacy):",
             stream,
             "active:",
-            stream?.active
+            stream?.active,
           );
 
           // Stream null ise temizle (geriye uyumluluk)
@@ -1670,7 +1942,7 @@
               console.log(
                 `Stream for ${presenterId}:`,
                 stream.active,
-                stream.getTracks().map((t) => t.kind)
+                stream.getTracks().map((t) => t.kind),
               );
             }
           });
@@ -1700,7 +1972,7 @@
           this.$nextTick(() => {
             for (const [presenterId, stream] of Object.entries(newStreams)) {
               const videoEl = document.getElementById(
-                "remote-video-" + presenterId
+                "remote-video-" + presenterId,
               );
               if (videoEl && videoEl.srcObject !== stream) {
                 console.log("Binding stream to video element:", presenterId);
@@ -1753,7 +2025,7 @@
         // Reconnect callback'leri
         this.webrtc.onReconnecting = (attempt, maxAttempts, delay) => {
           console.log(
-            `Reconnecting... ${attempt}/${maxAttempts}, delay: ${delay}ms`
+            `Reconnecting... ${attempt}/${maxAttempts}, delay: ${delay}ms`,
           );
           this.isReconnecting = true;
           this.reconnectAttempts = attempt;
@@ -1783,7 +2055,7 @@
         this.webrtc.onPresenterChange = (
           presenterId,
           presenterName,
-          shareType
+          shareType,
         ) => {
           this.currentPresenterId = presenterId;
           this.currentPresenterName = presenterName;
@@ -1809,7 +2081,7 @@
 
           // Ayrılan presenter'ı tespit et
           const leftPresenters = oldPresenterIds.filter(
-            (id) => !newPresenterIds.includes(id)
+            (id) => !newPresenterIds.includes(id),
           );
 
           // Ayrılan presenter'ların stream'lerini temizle
@@ -1913,6 +2185,26 @@
           this.showWhiteboard = false;
         };
 
+        // ==================== PRESENTATION MODE CALLBACKS ====================
+        this.webrtc.onPresentationModeStarted = (data) => {
+          this.handlePresentationModeStarted(data);
+        };
+
+        this.webrtc.onPresentationModeStopped = (data) => {
+          this.handlePresentationModeStopped(data);
+        };
+
+        // ==================== VOICE CHAT CALLBACKS ====================
+        this.webrtc.onAudioTrackAdded = (data) => {
+          console.log("Audio track added:", data.username);
+          this.updateActiveAudioUsers(data.active_audio_users);
+        };
+
+        this.webrtc.onAudioTrackRemoved = (data) => {
+          console.log("Audio track removed:", data.username);
+          this.updateActiveAudioUsers(data.active_audio_users);
+        };
+
         // Connect WebSocket
         try {
           await this.webrtc.connect();
@@ -1927,7 +2219,7 @@
       async loadRoomInfo() {
         try {
           const response = await Auth.fetchWithAuth(
-            "/api/rooms/" + this.roomId
+            "/api/rooms/" + this.roomId,
           );
           if (response && response.ok) {
             const room = await response.json();
@@ -1945,7 +2237,7 @@
         // Çoklu presenter kontrolü - max 2
         if (!this.canShare()) {
           alert(
-            "Maksimum 2 kişi aynı anda paylaşım yapabilir. Lütfen bekleyin."
+            "Maksimum 2 kişi aynı anda paylaşım yapabilir. Lütfen bekleyin.",
           );
           return;
         }
@@ -1960,7 +2252,7 @@
           "Before screen share - remoteStream:",
           existingRemoteStream,
           "presenter:",
-          existingPresenterId
+          existingPresenterId,
         );
 
         try {
@@ -2007,7 +2299,7 @@
             }
             console.log(
               "After screen share - remoteStream:",
-              this.remoteStream
+              this.remoteStream,
             );
           });
         } catch (e) {
@@ -2024,7 +2316,7 @@
         // Çoklu presenter kontrolü - max 2
         if (!this.canShare()) {
           alert(
-            "Maksimum 2 kişi aynı anda paylaşım yapabilir. Lütfen bekleyin."
+            "Maksimum 2 kişi aynı anda paylaşım yapabilir. Lütfen bekleyin.",
           );
           return;
         }
@@ -2039,7 +2331,7 @@
           "Before camera share - remoteStream:",
           existingRemoteStream,
           "presenter:",
-          existingPresenterId
+          existingPresenterId,
         );
 
         try {
@@ -2087,7 +2379,7 @@
             }
             console.log(
               "After camera share - remoteStream:",
-              this.remoteStream
+              this.remoteStream,
             );
           });
         } catch (e) {
@@ -2096,7 +2388,7 @@
             alert(e.message);
           } else if (e.name !== "NotAllowedError") {
             alert(
-              "Kamera paylaşımı başlatılamadı. Kamera izni verildiğinden emin olun."
+              "Kamera paylaşımı başlatılamadı. Kamera izni verildiğinden emin olun.",
             );
           }
         }
@@ -2181,7 +2473,7 @@
       endRoom() {
         if (
           confirm(
-            "Odayı sonlandırmak istediğinize emin misiniz? Tüm katılımcılar çıkarılacak."
+            "Odayı sonlandırmak istediğinize emin misiniz? Tüm katılımcılar çıkarılacak.",
           )
         ) {
           this.webrtc.endRoom();
@@ -2225,8 +2517,9 @@
       createNotificationSound() {
         // Web Audio API ile basit bir beep sesi oluştur
         try {
-          const audioContext = new (window.AudioContext ||
-            window.webkitAudioContext)();
+          const audioContext = new (
+            window.AudioContext || window.webkitAudioContext
+          )();
           this.audioContext = audioContext;
         } catch (e) {
           console.warn("Audio context not supported");
@@ -2248,7 +2541,7 @@
           gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
           gainNode.gain.exponentialRampToValueAtTime(
             0.01,
-            this.audioContext.currentTime + 0.3
+            this.audioContext.currentTime + 0.3,
           );
 
           oscillator.start(this.audioContext.currentTime);
@@ -2272,7 +2565,7 @@
           gain1.gain.setValueAtTime(0.25, this.audioContext.currentTime);
           gain1.gain.exponentialRampToValueAtTime(
             0.01,
-            this.audioContext.currentTime + 0.15
+            this.audioContext.currentTime + 0.15,
           );
           osc1.start(this.audioContext.currentTime);
           osc1.stop(this.audioContext.currentTime + 0.15);
@@ -2287,7 +2580,7 @@
           gain2.gain.setValueAtTime(0.25, this.audioContext.currentTime + 0.12);
           gain2.gain.exponentialRampToValueAtTime(
             0.01,
-            this.audioContext.currentTime + 0.35
+            this.audioContext.currentTime + 0.35,
           );
           osc2.start(this.audioContext.currentTime + 0.12);
           osc2.stop(this.audioContext.currentTime + 0.35);
@@ -2310,7 +2603,7 @@
           gain1.gain.setValueAtTime(0.2, this.audioContext.currentTime);
           gain1.gain.exponentialRampToValueAtTime(
             0.01,
-            this.audioContext.currentTime + 0.15
+            this.audioContext.currentTime + 0.15,
           );
           osc1.start(this.audioContext.currentTime);
           osc1.stop(this.audioContext.currentTime + 0.15);
@@ -2325,7 +2618,7 @@
           gain2.gain.setValueAtTime(0.2, this.audioContext.currentTime + 0.12);
           gain2.gain.exponentialRampToValueAtTime(
             0.01,
-            this.audioContext.currentTime + 0.35
+            this.audioContext.currentTime + 0.35,
           );
           osc2.start(this.audioContext.currentTime + 0.12);
           osc2.stop(this.audioContext.currentTime + 0.35);
@@ -2918,7 +3211,7 @@
           // WebRTC manager üzerinden indir (file_id ile)
           await this.webrtc.downloadFile(
             file.id || file.file_id,
-            file.name || file.filename
+            file.name || file.filename,
           );
         } catch (e) {
           console.error("Download error:", e);
@@ -2934,12 +3227,202 @@
 
       showReconnectFailedModal() {
         alert(
-          "Bağlantı kurulamadı. Lütfen sayfayı yenileyin veya internet bağlantınızı kontrol edin."
+          "Bağlantı kurulamadı. Lütfen sayfayı yenileyin veya internet bağlantınızı kontrol edin.",
         );
       },
 
       showConnectionFailedModal() {
         alert("Bağlantı koptu. Yeniden bağlanmaya çalışılıyor...");
+      },
+
+      // ==================== PRESENTATION MODE METHODS ====================
+
+      // Presenter: Sunum modunu başlat/durdur
+      togglePresentationMode() {
+        if (!this.isScreenSharing && !this.isCameraSharing) {
+          alert("Sunum modu için önce ekran veya kamera paylaşımı başlatın.");
+          return;
+        }
+
+        this.isPresentationMode = !this.isPresentationMode;
+
+        if (this.isPresentationMode) {
+          // Sunum modunu başlat
+          this.webrtc.send({
+            type: "presentation_mode_started",
+          });
+          this.isPresentationPresenter = true;
+          console.log("Presentation mode started");
+        } else {
+          // Sunum modunu durdur
+          this.webrtc.send({
+            type: "presentation_mode_stopped",
+          });
+          this.isPresentationPresenter = false;
+          console.log("Presentation mode stopped");
+        }
+      },
+
+      // İzleyici: Sunum modu başladı - tam ekrana geç
+      handlePresentationModeStarted(data) {
+        console.log("Presentation mode started by:", data.presenter_name);
+
+        this.isInPresentationMode = true;
+        this.presentationPresenterName = data.presenter_name;
+        this.presentationPresenterId = data.presenter_id;
+        this.voiceChatEnabled = data.voice_chat_enabled || false;
+
+        // Ben başlatan değilsem tam ekrana geç
+        if (data.presenter_id !== this.currentUserId) {
+          this.isPresentationPresenter = false;
+
+          // Transition modalı göster
+          this.showPresentationTransitionModal = true;
+
+          // 1.5 saniye sonra tam ekrana geç
+          setTimeout(() => {
+            this.showPresentationTransitionModal = false;
+            this.enterPresentationFullscreen();
+          }, 1500);
+        } else {
+          this.isPresentationPresenter = true;
+        }
+      },
+
+      // İzleyici: Sunum modu tam ekran moduna gir
+      enterPresentationFullscreen() {
+        // Remote stream'i presentation video element'ine bağla
+        if (this.$refs.presentationVideo && this.remoteStream) {
+          this.$refs.presentationVideo.srcObject = this.remoteStream;
+          this.$refs.presentationVideo.play().catch((e) => {
+            console.warn("Presentation video autoplay failed:", e);
+          });
+        }
+
+        // Native fullscreen API'yi kullan (mümkünse)
+        const overlay = document.querySelector(
+          ".presentation-fullscreen-overlay",
+        );
+        if (overlay && overlay.requestFullscreen) {
+          overlay.requestFullscreen().catch((e) => {
+            console.warn(
+              "Fullscreen request failed (user gesture required):",
+              e,
+            );
+          });
+        }
+
+        console.log("Entered presentation fullscreen mode");
+      },
+
+      // İzleyici: Sunum modundan çık
+      exitPresentationMode() {
+        console.log("Exiting presentation mode");
+
+        this.isInPresentationMode = false;
+        this.isPresentationPresenter = false;
+
+        // Native fullscreen'den çık
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch((e) => {
+            console.warn("Exit fullscreen failed:", e);
+          });
+        }
+
+        // PiP modundan çık
+        if (this.isPiPMode && document.pictureInPictureElement) {
+          document.exitPictureInPicture().catch((e) => {
+            console.warn("Exit PiP failed:", e);
+          });
+          this.isPiPMode = false;
+        }
+
+        // Sunucuya bildir (opsiyonel - sadece log için)
+        this.webrtc.send({
+          type: "exit_fullscreen",
+        });
+      },
+
+      // İzleyici: Sunum modu durduruldu
+      handlePresentationModeStopped(data) {
+        console.log("Presentation mode stopped by:", data.presenter_id);
+
+        // Sunum modu sona erdi - normal moda dön
+        this.isInPresentationMode = false;
+        this.isPresentationMode = false;
+        this.isPresentationPresenter = false;
+        this.presentationPresenterName = "";
+        this.presentationPresenterId = null;
+
+        // Fullscreen'den çık
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch((e) => {
+            console.warn("Exit fullscreen failed:", e);
+          });
+        }
+
+        // PiP'ten çık
+        if (this.isPiPMode && document.pictureInPictureElement) {
+          document.exitPictureInPicture().catch((e) => {});
+          this.isPiPMode = false;
+        }
+      },
+
+      // Presentation controls'u geçici olarak göster (hover)
+      showPresentationControlsTemporary() {
+        this.showPresentationControls = true;
+
+        // Önceki timeout'u temizle
+        if (this.presentationControlsTimeout) {
+          clearTimeout(this.presentationControlsTimeout);
+        }
+
+        // 3 saniye sonra gizle
+        this.presentationControlsTimeout = setTimeout(() => {
+          this.showPresentationControls = false;
+        }, 3000);
+      },
+
+      // Picture-in-Picture modu
+      async togglePictureInPicture() {
+        const video = this.$refs.presentationVideo;
+
+        if (!video) {
+          console.warn("No presentation video element");
+          return;
+        }
+
+        try {
+          if (document.pictureInPictureElement) {
+            // PiP'ten çık
+            await document.exitPictureInPicture();
+            this.isPiPMode = false;
+          } else if (document.pictureInPictureEnabled) {
+            // PiP'e gir
+            await video.requestPictureInPicture();
+            this.isPiPMode = true;
+
+            // PiP kapatıldığında state'i güncelle
+            video.addEventListener(
+              "leavepictureinpicture",
+              () => {
+                this.isPiPMode = false;
+              },
+              { once: true },
+            );
+          } else {
+            alert("Picture-in-Picture bu tarayıcıda desteklenmiyor.");
+          }
+        } catch (e) {
+          console.error("PiP toggle failed:", e);
+          alert("Picture-in-Picture başlatılamadı: " + e.message);
+        }
+      },
+
+      // Voice Chat: Aktif audio kullanıcılarını güncelle
+      updateActiveAudioUsers(audioUsers) {
+        console.log("Active audio users updated:", audioUsers);
+        this.activeAudioUsers = audioUsers || [];
       },
 
       // Toast bildirimi göster
@@ -2949,10 +3432,10 @@
           type === "success"
             ? "bg-green-500"
             : type === "error"
-            ? "bg-red-500"
-            : type === "warning"
-            ? "bg-yellow-500"
-            : "bg-blue-500"
+              ? "bg-red-500"
+              : type === "warning"
+                ? "bg-yellow-500"
+                : "bg-blue-500"
         }`;
         toast.textContent = message;
         document.body.appendChild(toast);

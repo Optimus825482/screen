@@ -41,6 +41,9 @@ WS_USER_PREFIX = "ws_user:"
 WS_PRESENTER_PREFIX = "ws_presenter:"
 WS_SHARED_FILE_PREFIX = "ws_file:"
 WS_USERNAME_PREFIX = "ws_username:"
+WS_PRESENTATION_PREFIX = "ws_presentation:"
+WS_VOICE_CHAT_PREFIX = "ws_voice_chat:"
+WS_AUDIO_USERS_PREFIX = "ws_audio_users:"
 ROOM_PUBSUB_PREFIX = "room_broadcast:"
 
 # TTL değerleri (saniye)
@@ -701,6 +704,188 @@ class RedisStateService:
                         logger.warning(f"Failed to parse pub/sub message: {e}")
         except RedisError as e:
             logger.warning(f"Pub/sub listen error: {e}")
+
+    # ==================== Presentation Mode State ====================
+
+    async def ws_set_presentation_mode(
+        self,
+        room_id: str,
+        presenter_id: str,
+        presenter_name: str,
+        enabled: bool = True,
+        ttl: int = WS_STATE_TTL
+    ) -> bool:
+        """Sunum modunu ayarla."""
+        key = f"{WS_PRESENTATION_PREFIX}{room_id}"
+        
+        if not enabled:
+            # Sunum modunu kapat
+            return await self._delete_key(key)
+        
+        data = {
+            "enabled": True,
+            "presenter_id": presenter_id,
+            "presenter_name": presenter_name,
+            "started_at": time.time()
+        }
+
+        redis = await self.get_redis()
+        if redis:
+            try:
+                await redis.setex(key, ttl, json.dumps(data))
+                return True
+            except RedisError as e:
+                logger.warning(f"Redis ws_set_presentation_mode failed: {e}")
+
+        # Fallback
+        self._set_fallback(key, data, ttl)
+        return True
+
+    async def ws_get_presentation_mode(self, room_id: str) -> Optional[Dict[str, Any]]:
+        """Sunum modu durumunu getir."""
+        key = f"{WS_PRESENTATION_PREFIX}{room_id}"
+
+        redis = await self.get_redis()
+        if redis:
+            try:
+                data = await redis.get(key)
+                if data:
+                    return json.loads(data)
+            except RedisError:
+                pass
+
+        # Fallback
+        result = self._get_fallback(key)
+        if isinstance(result, dict) and "value" in result:
+            return result["value"]
+        return None
+
+    async def ws_stop_presentation_mode(self, room_id: str) -> bool:
+        """Sunum modunu kapat."""
+        key = f"{WS_PRESENTATION_PREFIX}{room_id}"
+        return await self._delete_key(key)
+
+    async def _delete_key(self, key: str) -> bool:
+        """Helper: Key sil."""
+        redis = await self.get_redis()
+        if redis:
+            try:
+                await redis.delete(key)
+            except RedisError:
+                pass
+        self._delete_fallback(key)
+        return True
+
+    # ==================== Voice Chat State ====================
+
+    async def ws_set_voice_chat(
+        self,
+        room_id: str,
+        enabled: bool = True,
+        ttl: int = WS_STATE_TTL
+    ) -> bool:
+        """Sesli iletişim durumunu ayarla."""
+        key = f"{WS_VOICE_CHAT_PREFIX}{room_id}"
+        
+        if not enabled:
+            return await self._delete_key(key)
+        
+        data = {
+            "enabled": True,
+            "started_at": time.time()
+        }
+
+        redis = await self.get_redis()
+        if redis:
+            try:
+                await redis.setex(key, ttl, json.dumps(data))
+                return True
+            except RedisError as e:
+                logger.warning(f"Redis ws_set_voice_chat failed: {e}")
+
+        self._set_fallback(key, data, ttl)
+        return True
+
+    async def ws_get_voice_chat(self, room_id: str) -> Optional[Dict[str, Any]]:
+        """Sesli iletişim durumunu getir."""
+        key = f"{WS_VOICE_CHAT_PREFIX}{room_id}"
+
+        redis = await self.get_redis()
+        if redis:
+            try:
+                data = await redis.get(key)
+                if data:
+                    return json.loads(data)
+            except RedisError:
+                pass
+
+        result = self._get_fallback(key)
+        if isinstance(result, dict) and "value" in result:
+            return result["value"]
+        return None
+
+    async def ws_add_audio_user(
+        self,
+        room_id: str,
+        user_id: str,
+        username: str,
+        ttl: int = WS_STATE_TTL
+    ) -> bool:
+        """Mikrofonu açık kullanıcı ekle."""
+        key = f"{WS_AUDIO_USERS_PREFIX}{room_id}:{user_id}"
+        data = {
+            "user_id": user_id,
+            "username": username,
+            "mic_open": True,
+            "added_at": time.time()
+        }
+
+        redis = await self.get_redis()
+        if redis:
+            try:
+                await redis.setex(key, ttl, json.dumps(data))
+                return True
+            except RedisError as e:
+                logger.warning(f"Redis ws_add_audio_user failed: {e}")
+
+        self._set_fallback(key, data, ttl)
+        return True
+
+    async def ws_remove_audio_user(self, room_id: str, user_id: str) -> bool:
+        """Mikrofonu açık kullanıcıyı kaldır."""
+        key = f"{WS_AUDIO_USERS_PREFIX}{room_id}:{user_id}"
+        return await self._delete_key(key)
+
+    async def ws_get_audio_users(self, room_id: str) -> List[Dict[str, Any]]:
+        """Mikrofonu açık kullanıcıları getir."""
+        pattern = f"{WS_AUDIO_USERS_PREFIX}{room_id}:*"
+        users = []
+
+        redis = await self.get_redis()
+        if redis:
+            try:
+                async for key in redis.scan_iter(match=pattern, count=100):
+                    data = await redis.get(key)
+                    if data:
+                        try:
+                            user_data = json.loads(data)
+                            users.append(user_data)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+            except RedisError:
+                pass
+
+        # Fallback
+        self._cleanup_fallback()
+        for k, v in self._fallback_store.items():
+            if k.startswith(pattern.replace("*", "")):
+                data = v.get("value") if isinstance(v, dict) else v
+                if isinstance(data, dict):
+                    user_id = data.get("user_id")
+                    if user_id and not any(u["user_id"] == user_id for u in users):
+                        users.append(data)
+
+        return users
 
     # ==================== Health Check ====================
 

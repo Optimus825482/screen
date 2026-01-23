@@ -298,7 +298,10 @@ async def websocket_room(
             "is_guest": is_guest,
             "participants": await manager.get_room_users(room_id),
             "presenters": await manager.get_presenters(room_id),
-            "shared_files": await manager.get_shared_files(room_id)
+            "shared_files": await manager.get_shared_files(room_id),
+            "presentation_mode": await redis_state.ws_get_presentation_mode(room_id),
+            "voice_chat": await redis_state.ws_get_voice_chat(room_id),
+            "audio_users": await redis_state.ws_get_audio_users(room_id)
         }, websocket)
 
         try:
@@ -576,6 +579,85 @@ async def websocket_room(
                 
                 elif msg_type == "ping":
                     await manager.send_personal({"type": "pong"}, websocket)
+                
+                # ==================== PRESENTATION MODE ====================
+                elif msg_type == "presentation_mode_started":
+                    # Sunum modu başlatıldı (ekran paylaşan kişi tarafından)
+                    # Sadece presenter bu mesajı gönderebilir
+                    presenters = await manager.get_presenters(room_id)
+                    if user_id in presenters:
+                        # Redis'e kaydet
+                        await redis_state.ws_set_presentation_mode(
+                            room_id, user_id, username, enabled=True
+                        )
+                        # Voice chat'i otomatik başlat
+                        await redis_state.ws_set_voice_chat(room_id, enabled=True)
+                        
+                        # Tüm izleyicilere bildir (presenter hariç)
+                        await manager.broadcast_to_room(room_id, {
+                            "type": "presentation_mode_started",
+                            "presenter_id": user_id,
+                            "presenter_name": username,
+                            "force_fullscreen": True,
+                            "voice_chat_enabled": True
+                        }, exclude_user=user_id)
+                        
+                        websocket_logger.info(
+                            f"Presentation mode started",
+                            extra={"room_id": room_id, "presenter": username}
+                        )
+                
+                elif msg_type == "presentation_mode_stopped":
+                    # Sunum modu durduruldu
+                    await redis_state.ws_stop_presentation_mode(room_id)
+                    
+                    # Tüm kullanıcılara bildir
+                    await manager.broadcast_to_room(room_id, {
+                        "type": "presentation_mode_stopped",
+                        "presenter_id": user_id
+                    }, exclude_user=user_id)
+                    
+                    websocket_logger.info(
+                        f"Presentation mode stopped",
+                        extra={"room_id": room_id, "user": username}
+                    )
+                
+                # ==================== VOICE CHAT (Conference Call) ====================
+                elif msg_type == "audio_track_added":
+                    # Kullanıcı mikrofonunu açtı (conference call)
+                    await redis_state.ws_add_audio_user(room_id, user_id, username)
+                    
+                    # Tüm kullanıcılara bildir
+                    await manager.broadcast_to_room(room_id, {
+                        "type": "audio_track_added",
+                        "user_id": user_id,
+                        "username": username,
+                        "active_audio_users": await redis_state.ws_get_audio_users(room_id)
+                    })
+                    
+                    websocket_logger.info(
+                        f"Audio track added",
+                        extra={"room_id": room_id, "user": username}
+                    )
+                
+                elif msg_type == "audio_track_removed":
+                    # Kullanıcı mikrofonunu kapattı
+                    await redis_state.ws_remove_audio_user(room_id, user_id)
+                    
+                    # Tüm kullanıcılara bildir
+                    await manager.broadcast_to_room(room_id, {
+                        "type": "audio_track_removed",
+                        "user_id": user_id,
+                        "username": username,
+                        "active_audio_users": await redis_state.ws_get_audio_users(room_id)
+                    })
+                
+                elif msg_type == "exit_fullscreen":
+                    # İzleyici tam ekrandan çıktı (bilgi amaçlı log)
+                    websocket_logger.debug(
+                        f"User exited fullscreen",
+                        extra={"room_id": room_id, "user": username}
+                    )
         
         except WebSocketDisconnect:
             websocket_logger.info(

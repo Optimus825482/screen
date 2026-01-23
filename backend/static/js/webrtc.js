@@ -31,6 +31,14 @@ class WebRTCManager {
     this.onReconnected = null; // Yeni: Reconnect başarılı olduğunda
     this.onReconnectFailed = null; // Yeni: Reconnect başarısız olduğunda
 
+    // Presentation Mode callbacks
+    this.onPresentationModeStarted = null; // Sunum modu başladığında
+    this.onPresentationModeStopped = null; // Sunum modu durduğunda
+
+    // Voice Chat callbacks
+    this.onAudioTrackAdded = null; // Biri mikrofon açtığında
+    this.onAudioTrackRemoved = null; // Biri mikrofon kapattığında
+
     // State
     this.isScreenSharing = false;
     this.isCameraSharing = false;
@@ -124,7 +132,7 @@ class WebRTCManager {
         // Bağlantı başarılı, reconnect durumlarını sıfırla
         if (this.reconnectAttempts > 0) {
           console.log(
-            `WebSocket reconnected after ${this.reconnectAttempts} attempts`
+            `WebSocket reconnected after ${this.reconnectAttempts} attempts`,
           );
           this.reconnectAttempts = 0;
           this.reconnectDelay = 1000;
@@ -183,7 +191,7 @@ class WebRTCManager {
     // Maksimum deneme sayısına ulaşıldı mı kontrol et
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error(
-        `Max reconnect attempts (${this.maxReconnectAttempts}) reached`
+        `Max reconnect attempts (${this.maxReconnectAttempts}) reached`,
       );
       this.wsState = "failed";
 
@@ -210,11 +218,11 @@ class WebRTCManager {
     // 1s, 2s, 4s, 8s, 16s, 30s (max)
     const currentDelay = Math.min(
       this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
-      this.maxReconnectDelay
+      this.maxReconnectDelay,
     );
 
     console.log(
-      `Reconnecting... Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}, delay: ${currentDelay}ms`
+      `Reconnecting... Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}, delay: ${currentDelay}ms`,
     );
 
     // Reconnect başlangıç callback
@@ -222,7 +230,7 @@ class WebRTCManager {
       this.onReconnecting(
         this.reconnectAttempts,
         this.maxReconnectAttempts,
-        currentDelay
+        currentDelay,
       );
     }
 
@@ -285,7 +293,7 @@ class WebRTCManager {
         }
         // Kendi user_id'mizi kaydet
         this.myUserId = data.participants.find(
-          (p) => p.username === data.room_name
+          (p) => p.username === data.room_name,
         )?.user_id;
 
         // Mevcut presenter'ları yükle
@@ -299,6 +307,32 @@ class WebRTCManager {
         // Paylaşılan dosyaları yükle
         if (data.shared_files) {
           this.sharedFiles = data.shared_files;
+        }
+
+        // Mevcut presentation mode'u yükle
+        if (data.presentation_mode && data.presentation_mode.enabled) {
+          console.log(
+            "Room has active presentation mode:",
+            data.presentation_mode,
+          );
+          if (this.onPresentationModeStarted) {
+            this.onPresentationModeStarted({
+              presenter_id: data.presentation_mode.presenter_id,
+              presenter_name: data.presentation_mode.presenter_name,
+              force_fullscreen: true,
+              voice_chat_enabled: data.voice_chat?.enabled || false,
+            });
+          }
+        }
+
+        // Mevcut audio kullanıcılarını yükle
+        if (data.audio_users && data.audio_users.length > 0) {
+          console.log("Room has active audio users:", data.audio_users);
+          if (this.onAudioTrackAdded) {
+            this.onAudioTrackAdded({
+              active_audio_users: data.audio_users,
+            });
+          }
         }
 
         // Mevcut kullanıcılar için peer connection oluştur
@@ -381,7 +415,7 @@ class WebRTCManager {
           "isScreenSharing:",
           this.isScreenSharing,
           "isCameraSharing:",
-          this.isCameraSharing
+          this.isCameraSharing,
         );
         await this.handleOffer(data.from, data.sdp);
         break;
@@ -401,7 +435,7 @@ class WebRTCManager {
           "Screen share started by:",
           data.presenter_name,
           "type:",
-          data.share_type
+          data.share_type,
         );
 
         // Presenter listesini güncelle
@@ -422,7 +456,7 @@ class WebRTCManager {
           this.onPresenterChange(
             data.presenter_id,
             data.presenter_name,
-            data.share_type
+            data.share_type,
           );
         }
 
@@ -435,7 +469,7 @@ class WebRTCManager {
         if (data.presenter_id !== this.myUserId) {
           console.log(
             "Requesting offer from new presenter:",
-            data.presenter_id
+            data.presenter_id,
           );
           this.send({ type: "request_offer", target: data.presenter_id });
 
@@ -444,7 +478,7 @@ class WebRTCManager {
           if (this.isScreenSharing || this.isCameraSharing) {
             console.log(
               "We are also sharing, sending offer to new presenter:",
-              data.presenter_id
+              data.presenter_id,
             );
             // Küçük gecikme ile gönder (race condition önlemek için)
             setTimeout(() => {
@@ -578,6 +612,40 @@ class WebRTCManager {
       case "pong":
         // Ping response, ignore
         break;
+
+      // ==================== PRESENTATION MODE ====================
+      case "presentation_mode_started":
+        // Sunum modu başlatıldı
+        console.log("Presentation mode started:", data);
+        if (this.onPresentationModeStarted) {
+          this.onPresentationModeStarted(data);
+        }
+        break;
+
+      case "presentation_mode_stopped":
+        // Sunum modu durduruldu
+        console.log("Presentation mode stopped:", data);
+        if (this.onPresentationModeStopped) {
+          this.onPresentationModeStopped(data);
+        }
+        break;
+
+      // ==================== VOICE CHAT ====================
+      case "audio_track_added":
+        // Biri mikrofon açtı
+        console.log("Audio track added:", data);
+        if (this.onAudioTrackAdded) {
+          this.onAudioTrackAdded(data);
+        }
+        break;
+
+      case "audio_track_removed":
+        // Biri mikrofon kapattı
+        console.log("Audio track removed:", data);
+        if (this.onAudioTrackRemoved) {
+          this.onAudioTrackRemoved(data);
+        }
+        break;
     }
   }
 
@@ -591,7 +659,7 @@ class WebRTCManager {
     // Çoklu presenter kontrolü - maksimum 2 presenter
     if (!this.canShare()) {
       throw new Error(
-        "Maksimum presenter sayısına (2) ulaşıldı. Lütfen bekleyin."
+        "Maksimum presenter sayısına (2) ulaşıldı. Lütfen bekleyin.",
       );
     }
 
@@ -632,7 +700,7 @@ class WebRTCManager {
     // Çoklu presenter kontrolü - maksimum 2 presenter
     if (!this.canShare()) {
       throw new Error(
-        "Maksimum presenter sayısına (2) ulaşıldı. Lütfen bekleyin."
+        "Maksimum presenter sayısına (2) ulaşıldı. Lütfen bekleyin.",
       );
     }
 
@@ -744,7 +812,7 @@ class WebRTCManager {
   static isMobileDevice() {
     return (
       /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-        navigator.userAgent
+        navigator.userAgent,
       ) ||
       (navigator.maxTouchPoints && navigator.maxTouchPoints > 2)
     );
@@ -818,7 +886,7 @@ class WebRTCManager {
       if (this.currentPresenterId) {
         console.log(
           "Viewer sending audio to presenter:",
-          this.currentPresenterId
+          this.currentPresenterId,
         );
 
         // audioStream'i sakla
@@ -890,7 +958,7 @@ class WebRTCManager {
   async handleViewerAudioAnswer(sdp) {
     if (this.viewerAudioPc) {
       await this.viewerAudioPc.setRemoteDescription(
-        new RTCSessionDescription(sdp)
+        new RTCSessionDescription(sdp),
       );
       console.log("Viewer audio answer received and set");
     }
@@ -925,7 +993,7 @@ class WebRTCManager {
         console.log(
           `Presenter audio ${newEnabled ? "enabled" : "disabled"}, isMuted: ${
             this.isMuted
-          }`
+          }`,
         );
       } else {
         // Audio track yok, muted olarak işaretle
@@ -945,7 +1013,7 @@ class WebRTCManager {
         console.log(
           `Viewer audio ${newEnabled ? "enabled" : "disabled"}, isMuted: ${
             this.isMuted
-          }`
+          }`,
         );
       } else {
         this.isMuted = true;
@@ -1033,13 +1101,13 @@ class WebRTCManager {
     pc.oniceconnectionstatechange = () => {
       console.log(
         `ICE connection state with ${userId}:`,
-        pc.iceConnectionState
+        pc.iceConnectionState,
       );
 
       // ICE bağlantısı başarısız olursa
       if (pc.iceConnectionState === "failed") {
         console.log(
-          `ICE connection failed for ${userId}, attempting restart...`
+          `ICE connection failed for ${userId}, attempting restart...`,
         );
         this.attemptIceRestart(userId, pc);
       }
@@ -1069,7 +1137,7 @@ class WebRTCManager {
         "stream:",
         event.streams[0],
         "active:",
-        event.streams[0]?.active
+        event.streams[0]?.active,
       );
       const stream = event.streams[0];
 
@@ -1091,7 +1159,7 @@ class WebRTCManager {
         }
         existingStream.addTrack(event.track);
         console.log(
-          `Added/replaced ${event.track.kind} track to existing stream for ${userId}`
+          `Added/replaced ${event.track.kind} track to existing stream for ${userId}`,
         );
       } else {
         this.remoteStreams.set(userId, stream);
@@ -1147,7 +1215,7 @@ class WebRTCManager {
       // Connection failed ise ICE restart dene
       if (pc.connectionState === "failed") {
         console.log(
-          `Connection failed for ${userId}, attempting ICE restart...`
+          `Connection failed for ${userId}, attempting ICE restart...`,
         );
         this.attemptIceRestart(userId, pc);
       }
@@ -1155,13 +1223,13 @@ class WebRTCManager {
       // Connection disconnected ise kısa süre bekle, sonra ICE restart
       if (pc.connectionState === "disconnected") {
         console.log(
-          `Connection disconnected for ${userId}, waiting before ICE restart...`
+          `Connection disconnected for ${userId}, waiting before ICE restart...`,
         );
         // 3 saniye bekle, hala disconnected ise restart
         setTimeout(() => {
           if (pc.connectionState === "disconnected") {
             console.log(
-              `Still disconnected for ${userId}, attempting ICE restart...`
+              `Still disconnected for ${userId}, attempting ICE restart...`,
             );
             this.attemptIceRestart(userId, pc);
           }
@@ -1179,7 +1247,7 @@ class WebRTCManager {
         ) {
           this.pendingIceCandidates.delete(userId);
           console.log(
-            `Cleared pending ICE candidates for ${userId} due to ${pc.connectionState}`
+            `Cleared pending ICE candidates for ${userId} due to ${pc.connectionState}`,
           );
         }
       }
@@ -1206,7 +1274,7 @@ class WebRTCManager {
     }
 
     console.log(
-      `Creating offer for ${userId}, signalingState: ${pc.signalingState}`
+      `Creating offer for ${userId}, signalingState: ${pc.signalingState}`,
     );
 
     // Eğer zaten stable state'deyse ve track'ler ekliyse, sadece renegotiate et
@@ -1272,13 +1340,13 @@ class WebRTCManager {
         const senders = pc.getSenders();
         for (const track of this.localStream.getTracks()) {
           const existingSender = senders.find(
-            (s) => s.track?.kind === track.kind
+            (s) => s.track?.kind === track.kind,
           );
           if (!existingSender) {
             try {
               pc.addTrack(track, this.localStream);
               console.log(
-                `Added local ${track.kind} track before handling offer from ${fromUserId}`
+                `Added local ${track.kind} track before handling offer from ${fromUserId}`,
               );
             } catch (e) {
               console.warn(`Could not add local track:`, e);
@@ -1297,7 +1365,7 @@ class WebRTCManager {
       ) {
         const candidates = this.pendingIceCandidates.get(fromUserId);
         console.log(
-          `Processing ${candidates.length} queued ICE candidates for ${fromUserId}`
+          `Processing ${candidates.length} queued ICE candidates for ${fromUserId}`,
         );
         for (const candidate of candidates) {
           try {
@@ -1331,7 +1399,7 @@ class WebRTCManager {
         await pc.setRemoteDescription(new RTCSessionDescription(sdp));
       } else {
         console.warn(
-          `Ignoring answer from ${fromUserId}, wrong state: ${pc.signalingState}`
+          `Ignoring answer from ${fromUserId}, wrong state: ${pc.signalingState}`,
         );
       }
     }
@@ -1347,7 +1415,7 @@ class WebRTCManager {
           await pc.addIceCandidate(new RTCIceCandidate(candidate));
         } else {
           console.log(
-            `Queuing ICE candidate for ${fromUserId}, no remote description yet`
+            `Queuing ICE candidate for ${fromUserId}, no remote description yet`,
           );
           // ICE candidate'leri kuyrukta tut
           if (!this.pendingIceCandidates) {
@@ -1362,7 +1430,7 @@ class WebRTCManager {
             candidates.push(candidate);
           } else {
             console.warn(
-              `ICE candidate queue full for ${fromUserId}, dropping candidate`
+              `ICE candidate queue full for ${fromUserId}, dropping candidate`,
             );
           }
         }
@@ -1436,7 +1504,7 @@ class WebRTCManager {
     pc.onconnectionstatechange = () => {
       console.log(
         `Viewer audio connection state (${username}):`,
-        pc.connectionState
+        pc.connectionState,
       );
     };
 
