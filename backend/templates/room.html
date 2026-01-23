@@ -219,20 +219,22 @@
 
     /* Bottom floating control bar for mobile */
     .mobile-control-bar {
-      position: absolute;
-      bottom: 12px;
-      left: 12px;
-      right: 12px;
+      position: fixed;
+      bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      left: 16px;
+      right: 16px;
       display: flex;
       justify-content: center;
       align-items: center;
       gap: 8px;
       padding: 8px 12px;
-      background: rgba(10, 15, 20, 0.9);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px;
-      z-index: 40;
+      background: rgba(15, 20, 25, 0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      z-index: 90;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     }
 
     /* Larger touch targets on mobile */
@@ -1056,6 +1058,64 @@
           </div>
         </div>
 
+        <!-- No Presenters State (Empty Room) -->
+        <div
+          x-show="!isScreenSharing && !isCameraSharing && getPresenterCount() === 0 && !showWhiteboard"
+          class="relative z-10 flex flex-col items-center gap-6 p-8 rounded-2xl bg-surface-dark/90 shadow-2xl backdrop-blur-md max-w-md text-center border border-border-dark"
+        >
+          <div
+            class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center"
+          >
+            <span class="material-symbols-outlined text-primary text-4xl"
+              >sensors_off</span
+            >
+          </div>
+          <div class="space-y-2">
+            <h3 class="text-xl font-bold text-white">Yayın Bekleniyor</h3>
+            <p class="text-sm text-text-secondary">
+              <span
+                x-text="isMobile ? 'Paylaşım başlatmak için aşağıdaki butonları kullanın.' : 'Ekranınızı paylaşmak için aşağıdaki butona tıklayın.'"
+              ></span>
+            </p>
+          </div>
+
+          <!-- Mobil Paylaşım Butonları -->
+          <div x-show="isMobile" class="flex flex-col gap-3 w-full">
+            <button
+              @click="startCameraShare()"
+              class="flex items-center justify-center gap-2 px-6 py-4 bg-primary hover:bg-primary-hover text-white rounded-xl transition-all font-bold shadow-lg shadow-primary/20"
+            >
+              <span class="material-symbols-outlined">videocam</span>
+              Kamerayı Başlat
+            </button>
+            <button
+              @click="startScreenShare()"
+              class="flex items-center justify-center gap-2 px-6 py-4 bg-white/10 hover:bg-white/15 text-white rounded-xl transition-all font-bold border border-white/10"
+            >
+              <span class="material-symbols-outlined">screen_share</span>
+              Ekranı Paylaş
+            </button>
+            <button
+              @click="toggleWhiteboard()"
+              class="flex items-center justify-center gap-2 px-6 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all font-bold"
+            >
+              <span class="material-symbols-outlined">draw</span>
+              Whiteboard Aç
+            </button>
+          </div>
+
+          <!-- Desktop Paylaşım Butonları -->
+          <div x-show="!isMobile" class="flex flex-col gap-3 w-full">
+            <button
+              @click="startScreenShare()"
+              class="flex items-center justify-center gap-2 px-6 py-4 bg-primary hover:bg-primary-hover text-white rounded-xl transition-all font-bold shadow-lg shadow-primary/20"
+            >
+              <span class="material-symbols-outlined">screen_share</span>
+              Ekran Paylaşmaya Başla
+            </button>
+          </div>
+        </div>
+
         <!-- Host Sharing Indicator -->
         <div
           x-show="isScreenSharing || isCameraSharing"
@@ -1115,7 +1175,7 @@
         </div>
       </div>
 
-      <!-- Mobile Control Bar (floating, modern design) -->
+      <!-- Mobile Control Bar (fixed, modern design) -->
       <div
         x-show="isMobile"
         x-transition:enter="transition ease-out duration-300"
