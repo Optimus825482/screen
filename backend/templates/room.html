@@ -556,10 +556,12 @@
   x-init="init()"
   x-cloak
   class="min-h-screen flex flex-col bg-background-dark"
+  :class="isMobile ? 'mobile-room-container' : ''"
 >
   <!-- Header -->
   <header
-    class="h-14 md:h-16 flex items-center justify-between px-3 md:px-6 border-b border-border-dark bg-background-dark shrink-0 z-10 safe-area-top"
+    class="h-12 sm:h-14 md:h-16 flex items-center justify-between px-2 sm:px-3 md:px-6 border-b border-border-dark bg-background-dark shrink-0 z-10 safe-area-top"
+    :class="isMobile ? 'mobile-header' : ''"
   >
     <div class="flex items-center gap-2 md:gap-4 text-white">
       <button
@@ -814,10 +816,10 @@
           ></span>
         </div>
       </div>
-      <!-- Mobile Sidebar Toggle -->
+      <!-- Sidebar Toggle (tablet only - mobile uses bottom bar) -->
       <button
         @click="showMobileSidebar = !showMobileSidebar"
-        class="lg:hidden p-2 hover:bg-surface-dark rounded-lg transition-colors relative"
+        class="hidden sm:flex lg:hidden p-2 hover:bg-surface-dark rounded-lg transition-colors relative"
       >
         <span class="material-symbols-outlined text-[22px]">chat</span>
         <span
@@ -831,11 +833,13 @@
   <div class="flex flex-1 overflow-hidden">
     <!-- Main Video Area -->
     <main
-      class="flex-1 flex flex-col relative bg-black/20 p-2 md:p-4 gap-2 md:gap-4"
+      class="flex-1 flex flex-col relative bg-black/20 p-1 sm:p-2 md:p-4 gap-1 sm:gap-2 md:gap-4"
+      :class="isMobile ? 'mobile-video-area' : ''"
     >
       <!-- Screen Share Area -->
       <div
-        class="flex-1 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border-dark video-container relative overflow-hidden"
+        class="flex-1 flex flex-col items-center justify-center rounded-lg sm:rounded-xl sm:border-2 sm:border-dashed sm:border-border-dark video-container relative overflow-hidden"
+        :class="isMobile ? 'border-0' : ''"
         @drop.prevent="handleFileDrop($event)"
         @dragover.prevent="handleFileDragOver($event)"
         @dragleave="handleFileDragLeave()"
@@ -1301,49 +1305,67 @@
         </div>
       </div>
 
-      <!-- Mobile Control Bar (sadece mobilde görünür) -->
-      <div class="flex sm:hidden justify-center pb-2 safe-area-bottom">
+      <!-- Mobile Control Bar (floating, modern design) -->
+      <div
+        x-show="isMobile"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0 translate-y-4"
+        x-transition:enter-end="opacity-100 translate-y-0"
+        class="mobile-control-bar sm:hidden"
+      >
         <div
-          class="flex items-center gap-1 bg-surface-dark border border-border-dark p-1.5 rounded-xl shadow-lg"
+          class="flex items-center gap-2 bg-surface-dark/90 backdrop-blur-xl border border-white/10 p-2 rounded-2xl shadow-2xl"
         >
           <!-- Mic Toggle -->
           <button
             @click="toggleMic()"
-            class="control-btn relative p-2"
-            :class="!isMuted ? 'text-white' : 'text-slate-400'"
+            class="relative w-11 h-11 flex items-center justify-center rounded-xl transition-all"
+            :class="!isMuted ? 'bg-green-500/20 text-green-400' : 'text-slate-400 hover:bg-white/5'"
           >
             <span
               x-show="!isMuted"
-              class="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full border border-surface-dark"
+              class="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse"
             ></span>
             <span
-              class="material-symbols-outlined text-[20px]"
+              class="material-symbols-outlined text-[22px]"
               x-text="isMuted ? 'mic_off' : 'mic'"
             ></span>
+          </button>
+
+          <!-- Sunum Modu (sadece paylaşım varken) -->
+          <button
+            x-show="isScreenSharing || isCameraSharing"
+            @click="togglePresentationMode()"
+            class="w-11 h-11 flex items-center justify-center rounded-xl transition-all"
+            :class="isPresentationMode ? 'bg-orange-500/20 text-orange-400' : 'text-slate-400 hover:bg-white/5'"
+            title="Sunum Modu"
+          >
+            <span class="material-symbols-outlined text-[22px]">slideshow</span>
           </button>
 
           <!-- Annotation Toggle -->
           <button
             x-show="remoteStream || isScreenSharing || isCameraSharing"
             @click="toggleAnnotationTools()"
-            class="control-btn p-2"
-            :class="showAnnotationTools ? 'active' : 'text-slate-400'"
+            class="w-11 h-11 flex items-center justify-center rounded-xl transition-all"
+            :class="showAnnotationTools ? 'bg-primary/20 text-primary' : 'text-slate-400 hover:bg-white/5'"
           >
-            <span class="material-symbols-outlined text-[20px]">draw</span>
+            <span class="material-symbols-outlined text-[22px]">draw</span>
           </button>
 
-          <!-- File Share -->
+          <!-- Chat Toggle -->
           <button
-            @click="!fileUploading && selectFileToShare()"
-            class="control-btn p-2"
-            :class="fileUploading ? 'text-primary' : 'text-slate-400'"
+            @click="showMobileSidebar = !showMobileSidebar"
+            class="relative w-11 h-11 flex items-center justify-center rounded-xl text-slate-400 hover:bg-white/5 transition-all"
           >
-            <span class="material-symbols-outlined text-[20px]"
-              >attach_file</span
-            >
+            <span
+              x-show="chatMessages.length > 0 && !showMobileSidebar"
+              class="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"
+            ></span>
+            <span class="material-symbols-outlined text-[22px]">chat</span>
           </button>
 
-          <div class="w-px h-6 bg-white/10"></div>
+          <div class="w-px h-8 bg-white/10"></div>
 
           <!-- Share Controls -->
           <div class="relative">
@@ -1354,17 +1376,17 @@
               <button
                 x-show="isCameraSharing"
                 @click="switchCamera()"
-                class="p-2 rounded-lg text-white hover:bg-surface-hover"
+                class="w-11 h-11 flex items-center justify-center rounded-xl text-white hover:bg-white/10 transition-all"
               >
-                <span class="material-symbols-outlined text-[20px]"
+                <span class="material-symbols-outlined text-[22px]"
                   >cameraswitch</span
                 >
               </button>
               <button
                 @click="stopSharing()"
-                class="p-2 rounded-lg bg-red-500/20 text-red-400"
+                class="w-11 h-11 flex items-center justify-center rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
               >
-                <span class="material-symbols-outlined text-[20px]"
+                <span class="material-symbols-outlined text-[22px]"
                   >stop_screen_share</span
                 >
               </button>
@@ -1374,18 +1396,18 @@
               <button
                 x-show="!canShare()"
                 disabled
-                class="p-2 rounded-lg text-slate-500 cursor-not-allowed"
+                class="w-11 h-11 flex items-center justify-center rounded-xl text-slate-500 cursor-not-allowed"
               >
-                <span class="material-symbols-outlined text-[20px]"
+                <span class="material-symbols-outlined text-[22px]"
                   >screen_share</span
                 >
               </button>
               <button
                 x-show="canShare()"
                 @click="showShareMenu = !showShareMenu"
-                class="p-2 rounded-lg bg-primary text-white"
+                class="w-11 h-11 flex items-center justify-center rounded-xl bg-primary text-white hover:bg-primary-hover transition-all"
               >
-                <span class="material-symbols-outlined text-[20px]"
+                <span class="material-symbols-outlined text-[22px]"
                   >screen_share</span
                 >
               </button>
@@ -1422,14 +1444,14 @@
             </div>
           </div>
 
-          <div class="w-px h-6 bg-white/10"></div>
+          <div class="w-px h-8 bg-white/10"></div>
 
           <!-- End Call -->
           <button
             @click="isHost ? endRoom() : leaveRoom()"
-            class="control-btn danger text-white p-2"
+            class="w-12 h-11 flex items-center justify-center rounded-xl bg-red-500 text-white hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
           >
-            <span class="material-symbols-outlined text-[20px]">call_end</span>
+            <span class="material-symbols-outlined text-[22px]">call_end</span>
           </button>
         </div>
       </div>
