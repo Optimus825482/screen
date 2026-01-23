@@ -558,29 +558,34 @@
   class="min-h-screen flex flex-col bg-background-dark"
   :class="isMobile ? 'mobile-room-container' : ''"
 >
-  <!-- Header -->
   <header
-    class="h-12 sm:h-14 md:h-16 flex items-center justify-between px-2 sm:px-3 md:px-6 border-b border-border-dark bg-background-dark shrink-0 z-10 safe-area-top"
+    class="h-14 sm:h-16 flex items-center justify-between px-3 sm:px-4 md:px-6 border-b border-border-dark bg-background-dark/95 backdrop-blur-md shrink-0 z-[60] safe-area-top"
     :class="isMobile ? 'mobile-header' : ''"
   >
-    <div class="flex items-center gap-2 md:gap-4 text-white">
+    <!-- Left: Back/Exit -->
+    <div class="flex items-center gap-1 sm:gap-3">
       <button
         @click="leaveRoom()"
-        class="p-2 hover:bg-surface-dark rounded-lg transition-colors"
+        class="w-10 h-10 flex items-center justify-center hover:bg-surface-dark rounded-full transition-colors text-white"
+        title="Odadan Ayrıl"
       >
-        <span class="material-symbols-outlined text-[22px] md:text-[24px]"
-          >arrow_back</span
-        >
+        <span class="material-symbols-outlined text-[24px]">arrow_back</span>
       </button>
-      <h2
-        class="text-sm md:text-lg font-bold leading-tight tracking-[-0.015em] truncate max-w-[100px] md:max-w-none"
-        x-text="roomName"
-      ></h2>
+      <div class="flex flex-col">
+        <h2
+          class="text-xs sm:text-sm md:text-base font-bold text-white leading-tight truncate max-w-[120px] sm:max-w-none"
+          x-text="roomName"
+        ></h2>
+        <div class="flex items-center gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+          <span class="text-[10px] text-slate-400 font-medium">Canlı</span>
+        </div>
+      </div>
     </div>
 
-    <!-- Center Controls - Invite Link + Control Buttons -->
-    <div class="hidden sm:flex flex-1 items-center justify-center gap-3">
-      <!-- Invite Link (Compact) -->
+    <!-- Center Controls (Desktop Only) -->
+    <div class="hidden md:flex flex-1 items-center justify-center gap-3">
+      <!-- Invite Link -->
       <div
         class="flex items-center gap-2 bg-surface-dark px-2 py-1 rounded-lg border border-border-dark"
       >
@@ -594,7 +599,6 @@
         <button
           @click="copyInviteLinkHeader()"
           class="p-1 hover:bg-surface-hover rounded-md transition-colors group"
-          title="Linki Kopyala"
         >
           <span
             class="material-symbols-outlined text-[14px] text-text-secondary group-hover:text-primary transition-colors"
@@ -603,230 +607,36 @@
           ></span>
         </button>
       </div>
-
-      <!-- Header Control Buttons -->
-      <div
-        class="flex items-center gap-1 bg-surface-dark border border-border-dark p-1 rounded-lg"
-      >
-        <!-- Mic Toggle -->
-        <button
-          @click="toggleMic()"
-          class="control-btn relative p-2"
-          :class="!isMuted ? 'text-white' : 'text-slate-400'"
-          :title="isMuted ? 'Mikrofonu Aç' : 'Mikrofonu Kapat'"
-        >
-          <span
-            x-show="!isMuted"
-            class="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full border border-surface-dark"
-          ></span>
-          <span
-            class="material-symbols-outlined text-[18px]"
-            x-text="isMuted ? 'mic_off' : 'mic'"
-          ></span>
-        </button>
-
-        <!-- Annotation Toggle -->
-        <button
-          x-show="remoteStream || isScreenSharing || isCameraSharing"
-          @click="toggleAnnotationTools()"
-          class="control-btn p-2"
-          :class="showAnnotationTools ? 'active' : 'text-slate-400'"
-          title="Ekran Üzerine Çiz"
-        >
-          <span class="material-symbols-outlined text-[18px]">draw</span>
-        </button>
-
-        <!-- Sunum Modu Toggle (Sadece ekran/kamera paylaşırken görünür) -->
-        <button
-          x-show="isScreenSharing || isCameraSharing"
-          @click="togglePresentationMode()"
-          class="control-btn p-2"
-          :class="isPresentationMode ? 'active bg-orange-500/20 text-orange-400' : 'text-slate-400'"
-          :title="isPresentationMode ? 'Sunum Modunu Kapat' : 'Sunum Modunu Başlat'"
-        >
-          <span class="material-symbols-outlined text-[18px]">slideshow</span>
-        </button>
-
-        <!-- File Share -->
-        <button
-          @click="!fileUploading && selectFileToShare()"
-          class="control-btn p-2"
-          :class="fileUploading ? 'text-primary cursor-wait' : 'text-slate-400'"
-          :title="fileUploading ? 'Dosya yükleniyor...' : 'Dosya Paylaş'"
-        >
-          <span class="material-symbols-outlined text-[18px]">attach_file</span>
-        </button>
-
-        <div class="w-px h-5 bg-white/10"></div>
-
-        <!-- Share Controls -->
-        <div class="relative">
-          <!-- Paylaşım Aktifken -->
-          <div
-            x-show="isScreenSharing || isCameraSharing"
-            class="flex items-center gap-1"
-          >
-            <button
-              x-show="isCameraSharing"
-              @click="switchCamera()"
-              class="p-2 rounded-lg text-white hover:bg-surface-hover transition-all"
-              title="Kamera Değiştir"
-            >
-              <span class="material-symbols-outlined text-[18px]"
-                >cameraswitch</span
-              >
-            </button>
-            <button
-              @click="stopSharing()"
-              class="flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
-            >
-              <span class="material-symbols-outlined text-[18px]"
-                >stop_screen_share</span
-              >
-              <span class="hidden lg:inline text-xs">Durdur</span>
-            </button>
-          </div>
-
-          <!-- Paylaşım Pasifken -->
-          <div x-show="!isScreenSharing && !isCameraSharing">
-            <button
-              x-show="!canShare()"
-              disabled
-              class="flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm bg-surface-dark text-slate-500 cursor-not-allowed"
-            >
-              <span class="material-symbols-outlined text-[18px]"
-                >screen_share</span
-              >
-              <span class="text-xs">2/2</span>
-            </button>
-
-            <div x-show="canShare()" class="relative">
-              <button
-                x-show="isMobile"
-                @click="showShareMenu = !showShareMenu"
-                class="flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm bg-primary hover:bg-primary-hover text-white transition-all"
-              >
-                <span class="material-symbols-outlined text-[18px]"
-                  >screen_share</span
-                >
-                <span
-                  class="material-symbols-outlined text-[14px]"
-                  x-text="showShareMenu ? 'expand_less' : 'expand_more'"
-                ></span>
-              </button>
-
-              <button
-                x-show="!isMobile"
-                @click="startScreenShare()"
-                class="flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm bg-primary hover:bg-primary-hover text-white transition-all"
-              >
-                <span class="material-symbols-outlined text-[18px]"
-                  >screen_share</span
-                >
-                <span class="hidden lg:inline text-xs">Paylaş</span>
-              </button>
-
-              <!-- Dropdown Menu (Mobile) -->
-              <div
-                x-show="showShareMenu && isMobile"
-                @click.away="showShareMenu = false"
-                x-transition
-                class="absolute top-full left-0 mt-2 w-44 bg-surface-dark border border-border-dark rounded-lg shadow-xl overflow-hidden z-50"
-              >
-                <button
-                  @click="startCameraShare(); showShareMenu = false"
-                  class="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-surface-hover transition-colors"
-                >
-                  <span
-                    class="material-symbols-outlined text-primary text-[18px]"
-                    >videocam</span
-                  >
-                  <span>Kamera Paylaş</span>
-                </button>
-                <div class="border-t border-border-dark"></div>
-                <button
-                  @click="startScreenShare(); showShareMenu = false"
-                  class="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-surface-hover transition-colors"
-                >
-                  <span
-                    class="material-symbols-outlined text-blue-400 text-[18px]"
-                    >screen_share</span
-                  >
-                  <span>Ekran Paylaş</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="w-px h-5 bg-white/10"></div>
-
-        <!-- End Call -->
-        <button
-          @click="isHost ? endRoom() : leaveRoom()"
-          class="control-btn danger text-white p-2"
-          :title="isHost ? 'Odayı Sonlandır' : 'Odadan Ayrıl'"
-        >
-          <span class="material-symbols-outlined text-[18px]">call_end</span>
-        </button>
-      </div>
     </div>
 
-    <div class="flex items-center gap-2 md:gap-4">
+    <!-- Right Side: Status & Controls -->
+    <div class="flex items-center gap-1.5 sm:gap-3">
       <!-- Recording Timer -->
       <div
         x-show="isScreenSharing || isCameraSharing"
-        class="flex items-center gap-1.5 md:gap-2 bg-surface-dark px-2 md:px-3 py-1 md:py-1.5 rounded-lg border border-border-dark"
+        class="flex items-center gap-1.5 bg-red-500/10 px-2.5 py-1 rounded-full border border-red-500/20"
       >
-        <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+        <div class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></div>
         <span
-          class="text-[10px] md:text-xs font-mono font-medium text-text-secondary"
+          class="text-[10px] sm:text-xs font-mono font-bold text-red-500"
           x-text="formatTime(elapsedTime)"
         ></span>
       </div>
-      <!-- Connection Status -->
-      <div class="flex items-center gap-2">
-        <!-- Reconnecting Indicator -->
-        <div
-          x-show="isReconnecting"
-          x-transition.opacity
-          class="flex items-center gap-2 bg-yellow-500/20 px-2 md:px-3 py-1 md:py-1.5 rounded-lg border border-yellow-500/50"
-        >
-          <span
-            class="material-symbols-outlined text-[16px] md:text-[18px] text-yellow-500 animate-spin"
-            >sync</span
-          >
-          <span
-            class="text-[10px] md:text-xs font-medium text-yellow-500"
-            x-text="reconnectText"
-          ></span>
-        </div>
-        <!-- Connection Status -->
-        <div
-          class="flex items-center gap-2 bg-surface-dark px-2 md:px-3 py-1 md:py-1.5 rounded-lg border border-border-dark"
-        >
-          <span
-            class="material-symbols-outlined text-[16px] md:text-[18px]"
-            :class="{
-              'text-green-500': connected && !isReconnecting,
-              'text-yellow-500 animate-pulse': isReconnecting,
-              'text-red-500': !connected && !isReconnecting
-            }"
-            x-text="isReconnecting ? 'sync' : (connected ? 'signal_cellular_alt' : 'signal_cellular_off')"
-          ></span>
-        </div>
-      </div>
-      <!-- Sidebar Toggle (tablet only - mobile uses bottom bar) -->
-      <button
-        @click="showMobileSidebar = !showMobileSidebar"
-        class="hidden sm:flex lg:hidden p-2 hover:bg-surface-dark rounded-lg transition-colors relative"
+
+      <!-- Connection Status Overlay -->
+      <div
+        class="flex items-center gap-2 bg-surface-dark px-2 py-1 rounded-lg border border-border-dark"
       >
-        <span class="material-symbols-outlined text-[22px]">chat</span>
         <span
-          x-show="chatMessages.length > 0 && !showMobileSidebar"
-          class="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"
+          class="material-symbols-outlined text-[18px]"
+          :class="{ 'text-green-500': connected && !isReconnecting, 'text-yellow-500 animate-pulse': isReconnecting, 'text-red-500': !connected && !isReconnecting }"
+          x-text="isReconnecting ? 'sync' : (connected ? 'wifi' : 'wifi_off')"
         ></span>
-      </button>
+        <span
+          class="hidden sm:inline text-[10px] font-bold text-slate-400"
+          x-text="connected ? 'BAĞLI' : 'KOPUK'"
+        ></span>
+      </div>
     </div>
   </header>
 
@@ -1469,21 +1279,48 @@
       >
     </button>
 
-    <!-- Desktop Sidebar -->
+    <!-- Sidebar (Chat & Participants) -->
+    <!-- Mobile Overlay -->
+    <div
+      x-show="isMobile && showMobileSidebar"
+      x-transition:enter="transition duration-200 ease-out"
+      x-transition:enter-start="opacity-0"
+      x-transition:enter-end="opacity-100"
+      x-transition:leave="transition duration-150 ease-in"
+      x-transition:leave-start="opacity-100"
+      x-transition:leave-end="opacity-0"
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] sm:hidden"
+      @click="showMobileSidebar = false"
+    ></div>
+
     <aside
-      x-show="!sidebarCollapsed"
-      x-transition:enter="transition ease-out duration-200"
-      x-transition:enter-start="translate-x-full opacity-0"
-      x-transition:enter-end="translate-x-0 opacity-100"
-      x-transition:leave="transition ease-in duration-150"
-      x-transition:leave-start="translate-x-0 opacity-100"
-      x-transition:leave-end="translate-x-full opacity-0"
-      class="w-80 border-l border-border-dark bg-background-dark flex flex-col shrink-0 hidden lg:flex relative"
+      x-show="!sidebarCollapsed || (isMobile && showMobileSidebar)"
+      x-transition:enter="transition ease-out duration-300"
+      x-transition:enter-start="translate-x-full"
+      x-transition:enter-end="translate-x-0"
+      x-transition:leave="transition ease-in duration-200"
+      x-transition:leave-start="translate-x-0"
+      x-transition:leave-end="translate-x-full"
+      class="border-l border-border-dark bg-background-dark flex flex-col shrink-0 relative transition-all"
+      :class="{
+        'w-80 hidden lg:flex': !isMobile,
+        'fixed top-0 right-0 bottom-0 w-[85%] max-w-[360px] z-[101] flex': isMobile && showMobileSidebar
+      }"
     >
-      <!-- Collapse Button -->
+      <!-- Mobile Close Button -->
       <button
+        x-show="isMobile"
+        @click="showMobileSidebar = false"
+        class="absolute -left-12 top-4 w-10 h-10 bg-surface-dark rounded-full flex items-center justify-center text-white shadow-xl lg:hidden"
+      >
+        <span class="material-symbols-outlined">close</span>
+      </button>
+
+      <!-- Collapse Button (Desktop) -->
+      <button
+        x-show="!isMobile"
         @click="sidebarCollapsed = true"
-        class="absolute -left-3 top-1/2 -translate-y-1/2 z-10 bg-surface-dark border border-border-dark rounded-full p-1 hover:bg-surface-hover transition-colors shadow-lg"
+        class="absolute -left-3 top-1/2 -translate-y-1/2 z-10 bg-surface-dark border border-border-dark rounded-full p-1 hover:bg-surface-hover transition-colors shadow-lg hidden lg:block"
         title="Paneli Daralt"
       >
         <span class="material-symbols-outlined text-[16px] text-text-secondary"
